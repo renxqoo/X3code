@@ -18,6 +18,9 @@
     "x3code/no-cross-package-imports": "error",
     // contracts/ui/renderer 环境无关：禁 node/bun 内建，系统能力一律走 Port
     "x3code/no-node-in-browser-code": "error",
+    // 装死的测试写法：RNTL v14 已移除的UNSAFE_* 查询（断言永不执行却能编译）
+    // + catch 绑定被 void 吞掉（失败无处可见）
+    "x3code/no-dead-test-constructs": "error",
 
     // ═══ UI 纪律（本仓插件）═══
     // 一 .tsx 一组件/hook；嵌套定义组件/hook 禁止（每次渲染重建）

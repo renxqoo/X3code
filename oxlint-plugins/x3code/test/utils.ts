@@ -41,6 +41,7 @@ export function lintTree(files: Record<string, string>, lintTarget: string): Lin
       JSON.stringify({
         jsPlugins: [join(pluginDir, 'index.ts')],
         rules: {
+          'x3code/no-dead-test-constructs': 'error',
           'x3code/no-electron-outside-host': 'error',
           'x3code/no-cross-package-imports': 'error',
           'x3code/no-node-in-browser-code': 'error',

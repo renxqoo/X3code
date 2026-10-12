@@ -1,6 +1,7 @@
 import { definePlugin } from '@oxlint/plugins'
 
 import noCrossPackageImports from './rules/no-cross-package-imports.ts'
+import noDeadTestConstructs from './rules/no-dead-test-constructs.ts'
 import noElectronOutsideHost from './rules/no-electron-outside-host.ts'
 import noNodeInBrowserCode from './rules/no-node-in-browser-code.ts'
 
@@ -12,6 +13,7 @@ export default definePlugin({
     name: 'x3code',
   },
   rules: {
+    'no-dead-test-constructs': noDeadTestConstructs,
     'no-electron-outside-host': noElectronOutsideHost,
     'no-cross-package-imports': noCrossPackageImports,
     'no-node-in-browser-code': noNodeInBrowserCode,
