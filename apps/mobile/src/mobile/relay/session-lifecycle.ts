@@ -13,10 +13,35 @@ import { useComposerStore } from '@/store/composer-store';
 import { noteThreadPath, noteThreadPaths, threadPathOf } from './thread-paths';
 import type { createSessionSync } from '../state/session-sync';
 import { rebaselineSession } from '../state/session-align';
-import { initializeRelayRuntime, getRelayRuntime } from './runtime';
 import type { ChatMessage, ConversationSession } from '@/types/domain';
+// 仅类型引用：编译后被擦除，不构成运行时循环（值引用才是环）
+import type { RelayRuntime } from './runtime';
 
 let activeThreadId: string | null = null;
+
+/**
+ * runtime 取用口（由 runtime 装配时登记）。
+ *
+ * 本模块**不反向 import runtime**：runtime 已 import 本模块（挂载次序的唯一编排方），
+ * 反向引用会成环。web 形态下环会被 bundler 警告并让某些绑定拿到未初始化值
+ * （实测表现为 runtime 迟迟不建立，发送路径静默无反馈）——故改为注入。
+ */
+/** runtime 的最小取用面（泛型 R 由 runtime 侧给定，避免 invoke 的命令字面量联合在
+ *  结构类型比对时被逆变拒绝）。 */
+type RuntimeSource<R> = { initialize: () => R | null; current: () => R | null };
+let runtimeSource: RuntimeSource<never> | null = null;
+
+export function bindRuntimeSource<R>(source: RuntimeSource<R>): void {
+  runtimeSource = source as RuntimeSource<never>;
+}
+
+function initializeRelayRuntime<R>(): R | null {
+  return (runtimeSource as RuntimeSource<R> | null)?.initialize() ?? null;
+}
+
+function getRelayRuntime<R>(): R | null {
+  return (runtimeSource as RuntimeSource<R> | null)?.current() ?? null;
+}
 
 /** 事件字段安全取串（object → ''）。 */
 function textOf(value: unknown): string {
@@ -81,7 +106,7 @@ export function setSessionSyncRef(instance: ReturnType<typeof createSessionSync>
  * 事件流则按 thread 订阅投递；水化失败时先尝试 resume 唤活再读一次。
  */
 export async function hydrateThread(threadId: string): Promise<void> {
-  const rt = getRelayRuntime();
+  const rt = getRelayRuntime<RelayRuntime>();
   if (rt === null) return;
   const outcome = (await rt.client.invoke('session/entries', { threadId })) as { ok: boolean; data?: { items?: unknown[] } };
   if (activeThreadId !== threadId) return;
@@ -116,7 +141,7 @@ function applyHydrated(threadId: string, rawItems: unknown): void {
  * 路径只作兜底：表内没有才按 sessionPath resume（可能换发新 threadId）。
  */
 export async function reviveThread(threadId: string): Promise<{ ok: true; threadId: string } | { ok: false; reason: string }> {
-  const rt = getRelayRuntime();
+  const rt = getRelayRuntime<RelayRuntime>();
   if (rt === null) return { ok: false, reason: 'runtime_missing' };
   const sessionPath = threadPathOf(threadId);
   const rows = await liveThreadRows();
@@ -152,7 +177,7 @@ export async function reviveThread(threadId: string): Promise<{ ok: true; thread
 
 /** thread/list 原始行（失败按空表降级——调用方据此走 resume 兜底）。 */
 async function liveThreadRows(): Promise<Array<Record<string, unknown>>> {
-  const rt = getRelayRuntime();
+  const rt = getRelayRuntime<RelayRuntime>();
   if (rt === null) return [];
   const outcome = (await rt.client.invoke('session/liveThreads', {})) as { ok: boolean; data?: { sessions?: unknown } };
   if (!outcome.ok || !Array.isArray(outcome.data?.sessions)) return [];

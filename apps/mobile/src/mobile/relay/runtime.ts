@@ -21,7 +21,7 @@ import { noteThreadPaths } from './thread-paths';
 import { classifyRelayFailure } from './relay-reachability';
 import { bindLocalHistorySink } from '../state/local-history-changes';
 import {
-  activeThreadIdOf, reconcileThread, sessionSyncRefOf, setSessionSyncRef,
+  activeThreadIdOf, bindRuntimeSource, reconcileThread, sessionSyncRefOf, setSessionSyncRef,
 } from './session-lifecycle';
 import { createEventMapper, type EventMapper } from '@x3code/api/events/event-mapper';
 import { createHistorySync } from '../state/history-sync';
@@ -176,6 +176,12 @@ export function initializeRelayRuntime(): RelayRuntime {
   setSessionSync(sessionSyncRefOf());
   // 历史本地变更回流：store 只改投影会被下一条事件整体替换回滚，此处把意图写回真相层
   bindLocalHistorySink((threadId, change) => { historySyncOf()?.applyLocalChange(threadId, change); });
+  // runtime 取用口登记给 session-lifecycle：打破 lifecycle→runtime 的反向引用
+  // （runtime 已 import lifecycle，反向 import 成环在 web 形态下会让绑定未初始化）
+  bindRuntimeSource({
+    initialize: () => initializeRelayRuntime(),
+    current: () => getRelayRuntime(),
+  });
 
 
   /** L2 帧 → UiEvent（hub 事件名 camelCase 词表翻译——与桌面端同源 event-mapper）+ ui_request 面。 */

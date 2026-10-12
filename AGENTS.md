@@ -137,6 +137,7 @@ bun run ci        # lint → typecheck → build → test
 2. **建会话**：`bw s create --url http://localhost:8099 --backend chrome --allow-eval --allow-private-network`——`--allow-private-network` 必需，否则 `POLICY_BLOCKED`。
 3. **状态不可预置**：web 形态长期钥只走 sessionStorage、原生走 SecureStore（`credentials.ts`），**重启即失**。每次走查必须从「未配对」起点走完整配对流程，不得预置数据直接测功能。
 4. **断言走 extract 不走 eval**：本环境 RN Web 页面的 `eval` 返回值不可用（恒 `{}`），`extract_code` 沙箱亦无 `document`；用 `snap`/`extract`。
+4b. **`type` 不触发 RN Web 的 `onChangeText`**：文本写进了 textarea 的 DOM 值，但 React 状态不变（表现为「按钮不出现」「发送无反应」）。这是走查装置的局限、不是产品缺陷——**断言草稿相关的行为前，先确认 store 里 draft 非空**，否则会把装置问题误判成产品 bug（实测已踩：据此一度怀疑发送链路断裂）。同族：发送按钮的 `clicktext` 撞敏感词返回 `CONFIRMATION_REQUIRED`。
 5. **必跑的四条journey**（各自对应一类已修缺陷，详见 `/tmp/mobile-bw-walkthrough.md`）：配对发现（失败文案非空）、发送失败可见性（文案逐字可读不截断）、**从搜索/归档页打开会话后发消息**（回复必须落在当前会话）、断线自动恢复（无需手动重连）。
 6. **收尾**：`bw s close`；装置与数据留/tmp，不入库。
 
