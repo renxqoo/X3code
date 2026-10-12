@@ -51,7 +51,7 @@ B9 = 一期不移植（图片发送），显式挂账。
 | history-sync 5 例 | 原位 | 移植 + B8 回归 |
 | bridge-events 4 例 | 原位 | 移植 + B6 恰一次回归 |
 | bridge-advanced 4 例 | 原位 | 移植；died 断言改 idle（B15 裁决，装置适配） |
-| entriesToMessages 6 例 | 随 bridge-runtime 拆分迁水化文件测试 | 移植 |
+| entriesToMessages 6 例 | — | **删除 + 理由**：N1 波次审计确认该函数在生产代码零调用（水合走 `response-map.ts` 的 `mapEntriesResponse`），且自带 `u${n}`/`a${n}` 与 response-map `u-${seq}`/`a-${seq}` 两套 id 规则。测试保护的是死的那条——继续保留会掩盖真实映射层的缺陷。真实映射层的等价性由 response-map 自身用例承担 |
 | client 3 例 | mobile/relay/__tests__/client | 移植 |
 | storage 1 例 | 原位（键形态扩展断言） | 改写 |
 | ws 语义 8 例 | mobile/relay/__tests__/transport | **重写**（relay 协议下同场景新立，非移植） |

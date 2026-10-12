@@ -91,7 +91,7 @@ bun run ci        # lint → typecheck → build → test
 - bug 修复不做最小修补：不能只基于现在的实现考虑修复方案，要为以后的项目扩展考虑，用可持续、可扩展的方案根治当前 bug
 - 不写版本叙事：代码、注释、UI 文案里禁止出现「v1/v2 改了什么」「某版本修复了 XX」之类的内容；版本变更历史只属于 CHANGELOG/log 文档
 - 对外文档只描述当前行为：README、用户文档等不写 v1/v2 版本相关问题与新旧对比；版本差异只出现在 CHANGELOG/发布说明
-- 不允许假绿：禁止为过门禁加 skip、注释或删除断言、调低覆盖率阈值
+- 不允许假绿：禁止为过门禁加 skip、注释或删除断言、调低覆盖率阈值；禁止 `UNSAFE_*` 查询（RNTL v14 已移除，用了断言永不执行而测试仍能编译，门禁对真实缺陷直接失明）；catch 块不得 `void error` 吞异常（要么降级返回空形态，要么可见化）
 - 禁止 `git stash` / `git reset --hard` 等一切销毁性 git 操作
 
 ## 代码风格
@@ -128,6 +128,17 @@ bun run ci        # lint → typecheck → build → test
 3. **mock 模型服务**：本地 OpenAI SSE（`/chat/completions` 末帧带 `usage`），providers.baseUrl 指它——一轮对话零外部成本、usage 数字可控。
 4. **驱动与断言**：`snap` 看可交互元素（索引随动作重排），`click`/`type`/`press` 操作，`eval` 取 DOM 文本做正/反断言，`look --out` 留截图。已知坑：clicktext 参数串撞敏感词（如「发送消息」）返回 `CONFIRMATION_REQUIRED`（确认即执行，未经许可不批）；发送按钮只有 aria-label（clicktext 只认可见文本），用输入框 `press Enter` 发送；`file://` 页面 click 偶发 `POLICY_BLOCKED: scheme not allowed: file:`，换 clicktext/press/eval 路径。
 5. **收尾**：`bw s close`；临时数据留 /tmp 复用，不入库。
+
+### 移动端（apps/mobile）走查
+
+桌面端装置不能覆盖移动端：移动端无 Electron 可开窗，走 `expo start --web` + bw 浏览器。
+
+1. **起Metro**：`cd apps/mobile && bun run web --port 8099`（后台常驻）；`curl localhost:8099` 期望 200。
+2. **建会话**：`bw s create --url http://localhost:8099 --backend chrome --allow-eval --allow-private-network`——`--allow-private-network` 必需，否则 `POLICY_BLOCKED`。
+3. **状态不可预置**：web 形态长期钥只走 sessionStorage、原生走 SecureStore（`credentials.ts`），**重启即失**。每次走查必须从「未配对」起点走完整配对流程，不得预置数据直接测功能。
+4. **断言走 extract 不走 eval**：本环境 RN Web 页面的 `eval` 返回值不可用（恒 `{}`），`extract_code` 沙箱亦无 `document`；用 `snap`/`extract`。
+5. **必跑的四条journey**（各自对应一类已修缺陷，详见 `/tmp/mobile-bw-walkthrough.md`）：配对发现（失败文案非空）、发送失败可见性（文案逐字可读不截断）、**从搜索/归档页打开会话后发消息**（回复必须落在当前会话）、断线自动恢复（无需手动重连）。
+6. **收尾**：`bw s close`；装置与数据留/tmp，不入库。
 
 ## 提交与交付规范
 
