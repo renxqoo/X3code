@@ -26,6 +26,11 @@ export function withSavedMeta(
     const merged: Record<string, unknown> = { ...row };
     if (typeof merged['title'] !== 'string' && typeof meta['title'] === 'string') merged['title'] = meta['title'];
     if (typeof merged['cwd'] !== 'string' && typeof meta['cwd'] === 'string') merged['cwd'] = meta['cwd'];
+    // live 行的 preview 可能缺（宿主表未折叠）或为空串；saved 面是内容摘要的权威，
+    // 只在 live 侧拿不到值时补，不覆盖已有摘要
+    if ((merged['preview'] === undefined || merged['preview'] === '') && typeof meta['preview'] === 'string') {
+      merged['preview'] = meta['preview'];
+    }
     if (typeof merged['lastActivityAt'] !== 'number') {
       const at = typeof meta['lastActivityAt'] === 'number' ? (meta['lastActivityAt'] as number) : undefined;
       if (at !== undefined) merged['lastActivityAt'] = at;

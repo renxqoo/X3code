@@ -51,7 +51,9 @@ const COMMAND_MAP: Record<string, CommandMapping> = {
   'session/entries': { host: 'get_entries', args: { threadId: 'threadId', since: 'since' } },
   'session/messages': { host: 'get_messages', args: { threadId: 'threadId' } },
   'session/list': { host: 'thread/list' },
-  'session/liveThreads': { host: 'thread/list' },
+  // includePreview：会话列表要正文摘要（内容搜索/列表预览）。host 侧默认不带
+  // （桌面端 2s 轮询不能被逐会话读档放大），由调用方显式请求
+  'session/liveThreads': { host: 'thread/list', args: { includePreview: 'includePreview' } },
   'session/listSaved': { host: 'thread/list_saved', args: { cwd: 'cwd' } },
   'session/setName': { host: 'set_session_name', args: { threadId: 'threadId', name: 'name' } },
   'session/stop': {

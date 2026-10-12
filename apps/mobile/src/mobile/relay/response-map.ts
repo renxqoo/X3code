@@ -39,6 +39,8 @@ interface HostThreadRow {
   sessionPath: string | null;
   state: string;
   isStreaming?: boolean;
+  /** 正文摘要（内容搜索与列表预览的锚点） */
+  preview?: string;
 }
 
 interface HostModelRow {
@@ -108,7 +110,7 @@ export function mapEntriesResponse(data: unknown): { items: ChatMessage[]; curso
  * host 的 thread/list 只有运行态字段（threadId/cwd/state/sessionPath/isStreaming）——
  * 标题与最后活动时间不在该命令面，故这两项缺省缺席（history-sync 逐字段保留语义）。
  */
-export function mapThreadRows(data: unknown): Array<{ threadId: string; cwd: string; state: string; streaming: boolean; sessionPath: string | null; lastActivityAt?: number }> {
+export function mapThreadRows(data: unknown): Array<{ threadId: string; cwd: string; state: string; streaming: boolean; sessionPath: string | null; lastActivityAt?: number; preview?: string }> {
   if (!Array.isArray(data)) return [];
   return (data as HostThreadRow[]).filter((row) => typeof row?.threadId === 'string').map((row) => ({
     threadId: row.threadId,
@@ -116,6 +118,9 @@ export function mapThreadRows(data: unknown): Array<{ threadId: string; cwd: str
     state: row.state ?? 'live',
     streaming: row.isStreaming === true,
     sessionPath: row.sessionPath ?? null,
+    // preview 是内容搜索与列表预览的锚点：不透传则 host 下发的摘要在此丢失，
+    // history-sync 侧永远读到 undefined（字段断链会让整条特性静默失效）
+    ...(typeof row.preview === 'string' ? { preview: row.preview } : {}),
   }));
 }
 
@@ -138,6 +143,7 @@ export function mapSavedSessions(data: unknown): Array<Record<string, string | n
     if (typeof row['sessionPath'] === 'string') entry['sessionPath'] = row['sessionPath'] as string;
     if (typeof row['title'] === 'string') entry['title'] = row['title'] as string;
     if (typeof row['cwd'] === 'string') entry['cwd'] = row['cwd'] as string;
+    if (typeof row['preview'] === 'string') entry['preview'] = row['preview'] as string;
     const activity = num(row['lastActivityAt']) ?? num(row['updatedAt']) ?? num(row['endedAtMs']);
     if (activity !== undefined) entry['lastActivityAt'] = activity;
     out.push(entry);

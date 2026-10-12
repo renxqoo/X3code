@@ -19,6 +19,8 @@ interface SessionLike {
   threadId?: string;
   cwd?: string;
   title?: string;
+  /** 正文摘要（hub thread/list 从归档折叠）——内容搜索与列表预览的锚点。 */
+  preview?: string;
   state?: string;
   streaming?: boolean;
   model?: string | null;
@@ -32,6 +34,8 @@ interface SavedLike {
   title?: string;
   cwd?: string;
   lastActivityAt?: number;
+  /** 正文摘要（hub listSaved 从事件折叠）——内容搜索与列表预览的锚点。 */
+  preview?: string;
 }
 
 const stateOf = (raw: SessionLike): ConversationSession['state'] => {
@@ -56,7 +60,7 @@ export function toConversationSession(raw: SessionLike, pinned: boolean, archive
   const session: ConversationSession = {
     id: raw.threadId ?? '',
     title: raw.title ?? '未命名对话',
-    preview: '',
+    preview: raw.preview ?? '',
     project: raw.cwd ?? '',
     timeLabel: timeLabelOf(raw.lastActivityAt ?? 0),
     state: stateOf(raw),
@@ -74,6 +78,11 @@ export function toConversationSession(raw: SessionLike, pinned: boolean, archive
 
 export function createHistorySync(callbacks: HistorySyncCallbacks) {
   const sessions = new Map<string, ConversationSession>();
+  const removed = new Set<string>();
+  // 本地改过的标题：桌端随后推送同名会话时不得覆盖（用户刚改的名字不该被抹掉）
+  const localTitles = new Map<string, string>();
+  // 尚未在真相层出现的会话的本地意图：会话晚到（bootstrap 晚于用户操作）时补上
+  const deferred: Map<string, { pinned?: boolean; archived?: boolean; title?: string }> = new Map();
   /** sessionPath → threadId（偏好键反查：pinned/archived 键域是 sessionPath）。 */
   const pathIndex = new Map<string, string>();
 
@@ -93,6 +102,14 @@ export function createHistorySync(callbacks: HistorySyncCallbacks) {
     seedBootstrap(list: SessionLike[], saved: SavedLike[], preferences: { pinnedSessions?: string[]; archivedSessions?: string[] }): void {
       sessions.clear();
       pathIndex.clear();
+      // bootstrap 是权威快照：墓碑必须随之清空。
+      // 只清 sessions 不清 removed 会让「本地删除」在重连后复活且此后被静默冻结——
+      // 会话行回来了，但它的每一条 sessionUpdated 都被墓碑丢弃，标题/状态永远停在旧值。
+      removed.clear();
+      deferred.clear();
+      // localTitles 同样只服务于「会话尚未出现时的本地改名」，权威快照已含这些会话；
+      // 不清理会让表随进程时长无界增长
+      localTitles.clear();
       const pinnedPaths = new Set(preferences.pinnedSessions ?? []);
       const archivedPaths = new Set(preferences.archivedSessions ?? []);
       for (const raw of list) {
@@ -115,6 +132,9 @@ export function createHistorySync(callbacks: HistorySyncCallbacks) {
         if (item.title !== undefined) row.title = item.title;
         if (item.cwd !== undefined) row.cwd = item.cwd;
         if (item.lastActivityAt !== undefined) row.lastActivityAt = item.lastActivityAt;
+        // saved 侧的 preview 必须带上：只在归档列表里的会话（不在 thread/live）
+        // 内容搜索全靠这条路径，漏拷则该类会话恒零命中
+        if (item.preview !== undefined) row.preview = item.preview;
         const derived = toConversationSession(row, false, archived);
         derived.detached = item.sessionPath === undefined;
         sessions.set(sid, derived);
@@ -125,16 +145,29 @@ export function createHistorySync(callbacks: HistorySyncCallbacks) {
     updateSession(raw: SessionLike): void {
       const id = raw.threadId ?? '';
       if (id.length === 0) return;
+      // 墓碑：本地删除的会话不从桌面端事件复活（否则删除后下一条 sessionUpdated 就回来）
+      if (removed.has(id)) return;
       const existing = sessions.get(id);
       if (existing === undefined) {
-        sessions.set(id, toConversationSession(raw, false, false));
+        const created = toConversationSession(raw, false, false);
+        const localTitle = localTitles.get(id);
+        if (localTitle !== undefined) created.title = localTitle;
+        // 会话晚到：补上此前登记的本地意图（bootstrap 晚于用户操作的情形）
+        const late = deferred.get(id);
+        if (late !== undefined) {
+          if (late.pinned !== undefined) created.pinned = late.pinned;
+          if (late.archived !== undefined) created.archived = late.archived;
+          deferred.delete(id);
+        }
+        sessions.set(id, created);
         emit();
         return;
       }
       // 逐字段合并：残缺视图（sessionDied 只有 state）不清 title/cwd/时间
       const merged: ConversationSession = {
         ...existing,
-        ...(raw.title !== undefined ? { title: raw.title } : {}),
+        ...(raw.title !== undefined && !localTitles.has(id) ? { title: raw.title } : {}),
+        ...(raw.preview !== undefined ? { preview: raw.preview } : {}),
         ...(raw.cwd !== undefined ? { project: raw.cwd } : {}),
         state: stateOf({ ...(raw.state !== undefined ? { state: raw.state } : {}), ...(raw.streaming !== undefined || raw.state === 'live' ? { streaming: raw.streaming ?? false } : {}) }),
       };
@@ -143,24 +176,57 @@ export function createHistorySync(callbacks: HistorySyncCallbacks) {
         merged.endedAtMs = raw.lastActivityAt;
         merged.timeLabel = timeLabelOf(raw.lastActivityAt);
       }
+      const late = deferred.get(id);
+      if (late !== undefined) {
+        if (late.pinned !== undefined) merged.pinned = late.pinned;
+        if (late.archived !== undefined) merged.archived = late.archived;
+        deferred.delete(id);
+      }
       sessions.set(id, merged);
       emit();
     },
     /** 会话移除（sessionRemoved 事件 / session/stop remove）。 */
     removeSession(threadId: string): void {
       sessions.delete(threadId);
-      emit();
-    },
-    /** 本地偏好变更（置顶/归档切换——调用方负责同步 app/setPreference）。 */
-    setLocalPreference(threadId: string, patch: { pinned?: boolean; archived?: boolean }): void {
-      const existing = sessions.get(threadId);
-      if (existing === undefined) return;
-      sessions.set(threadId, { ...existing, ...patch });
+      removed.add(threadId);
       emit();
     },
     /** 打开会话时带消息（conversation-store 装载）。 */
     messagesOf(threadId: string): ConversationSession | undefined {
       return sessions.get(threadId);
+    },
+    /**
+     * 本地操作回流（置顶/归档/改名/删除）。
+     *
+     * 症状：用户置顶/归档/改名后，下一条 sessionUpdated 到达即回滚，删除的会话还会复活。
+     * 根因：history-sync 的 Map 是历史真相，store 只是它的投影拷贝；本地动作只改拷贝，
+     * 下一次 emit() 的整体替换把拷贝换回旧值。本方法把本地变更先写回 Map 再 emit，
+     * 拷贝与真相不再分叉。
+     *
+     * change 传 null 表示移除（删除会话）。
+     */
+    applyLocalChange(threadId: string, change: { pinned?: boolean; archived?: boolean; title?: string } | null): void {
+      if (change === null) {
+        sessions.delete(threadId);
+        // 墓碑：本地删的会话若稍后又从桌面端到达，不得复活
+        removed.add(threadId);
+        emit();
+        return;
+      }
+      // 墓碑不因后续意图清除：删除是显式用户动作，误触的置顶/改名不该复活会话
+      const existing = sessions.get(threadId);
+      if (existing === undefined) {
+        deferred.set(threadId, { ...deferred.get(threadId), ...change });
+        return;
+      }
+      sessions.set(threadId, {
+        ...existing,
+        ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
+        ...(change.archived !== undefined ? { archived: change.archived } : {}),
+        ...(change.title !== undefined ? { title: change.title.slice(0, 80) } : {}),
+      });
+      if (change.title !== undefined) localTitles.set(threadId, change.title.slice(0, 80));
+      emit();
     },
     snapshot(): ConversationSession[] {
       return [...sessions.values()];
@@ -176,7 +242,7 @@ export function mergeSaved(current: ConversationSession[], saved: SavedLike[]): 
     const derived: ConversationSession = {
       id: raw.sessionId ?? raw.sessionPath ?? '',
       title: raw.title ?? '历史会话',
-      preview: '',
+      preview: raw.preview ?? '',
       project: raw.cwd ?? '',
       timeLabel: timeLabelOf(raw.lastActivityAt ?? 0),
       state: 'idle',

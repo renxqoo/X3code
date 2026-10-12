@@ -39,6 +39,19 @@ function textOf(value: unknown): string {
   return '';
 }
 
+/** 本地行的 id 前缀（与 runtime.localRow 共用同一拼法——单一事实）。 */
+const LOCAL_ROW_PREFIX = 'local-';
+
+/** 设备侧本地行（非桥接投影）：发送失败、未连接、缺工作区等。 */
+export function isLocalRow(message: ChatMessage): boolean {
+  return message.id.startsWith(LOCAL_ROW_PREFIX);
+}
+
+/** 本地行 id（统一出口，避免各调用点自造前缀导致去重失效）。 */
+export function localRowId(key: string): string {
+  return `${LOCAL_ROW_PREFIX}${key}`;
+}
+
 export function createSessionSync(callbacks: SessionSyncCallbacks) {
   let messages: ChatMessage[] = [];
   let streaming = false;
@@ -62,6 +75,16 @@ export function createSessionSync(callbacks: SessionSyncCallbacks) {
     const next = [...messages];
     next[index] = patchFn(next[index] as ChatMessage);
     messages = next;
+  };
+
+  /** 整面替换并复位全部索引/流态（seed 与 rebaseline 共用——两者索引域都得清）。 */
+  const replace = (items: ChatMessage[]): void => {
+    messages = items;
+    streaming = false;
+    liveIndex.clear();
+    toolIndex.clear();
+    retryIndex.clear();
+    droppedRetryIds.clear();
   };
 
   /**
@@ -99,6 +122,12 @@ export function createSessionSync(callbacks: SessionSyncCallbacks) {
     return entry;
   };
 
+  /** 摘除乐观回显的 user 行（权威 u-<seq> 回显到达、或本次投递失败时）。
+   *  宣告在 handleEvent 之前：userMessage 分支要调它，const 无提升。 */
+  const dropOptimisticUsers = (): void => {
+    messages = messages.filter((message) => !message.id.startsWith(`${LOCAL_ROW_PREFIX}user-`));
+  };
+
   const handleEvent = (event: Record<string, unknown>): void => {
     const type = event['type'];
 
@@ -122,6 +151,7 @@ export function createSessionSync(callbacks: SessionSyncCallbacks) {
     if (type === 'userMessage') {
       const message = event['message'] as { seq?: number; text?: string; origin?: string } | undefined;
       if (message?.origin !== 'user') return; // 系统注入不进列表
+      dropOptimisticUsers();
       // 身份与历史水化同域（`u-<seq>`，response-map.walToMessages 同一拼法）：
       // 历史先到（seed）时同条事件不再重插（否则同句话两条气泡——与 PC 端同症状）。
       const seq = message.seq;
@@ -255,24 +285,51 @@ export function createSessionSync(callbacks: SessionSyncCallbacks) {
     callbacks.onSessionEvent(event);
   };
 
+  /**
+   * 本地提示行入流（发送失败/未连接/缺工作区等设备侧事实）。
+   *
+   * 与事件共用同一条 messages 数组及索引域：早期把本地提示直接 append 到 store，
+   * 而事件泵每次 handleEvent 都用快照整体替换 session.messages，提示会闪一下即被
+   * 冲掉（发送失败静默的成因）。两类行现在只经这一条写入路径，不再有“本地/桥接”
+   * 两路事实源互相覆盖。
+   *
+   * id 须经 localRowId 取得。投递失败行 id 含时间戳：连续两次不同原因的失败得两行
+   * （固定 id 会让后一次被前一次去重掉，用户只看到最早那条）。预览类行（未连接/
+   * 缺工作区）用固定 id——那是持续状态，不该每次按发送都堆一行。
+   *
+   * user 行是乐观回显（权威答案由 userMessage 事件带 u-<seq> 给出，id 域不同、
+   * 去重拦不住），由 dropOptimisticUsers 在权威回显或投递失败时先行摘除，
+   * 否则同句话会成两条气泡。
+   */
+  const appendLocal = (message: ChatMessage): void => {
+    if (messages.some((existing) => existing.id === message.id)) return;
+    if (message.kind !== 'user') dropOptimisticUsers();
+    append(message);
+  };
+
   return {
     handleEvent,
+    appendLocal,
     reset(): void {
-      messages = [];
-      streaming = false;
-      liveIndex.clear();
-      toolIndex.clear();
-      retryIndex.clear();
-      droppedRetryIds.clear();
+      replace([]);
     },
-    /** 历史水化（session/entries 映射产物整体替换）。 */
+    /**
+     * 历史水化（session/entries 映射产物整体替换）。
+     *
+     * 本地提示行跨水合存活：唤活/重开历史会重放 seed，整体替换会把「这条消息没送出去」
+     * 的事实抹掉——用户回来看历史时不该以为当时送达了。乐观 user 回显不随之存活：
+     * 它是运行态占位（权威答案是历史里的 u-<seq>），留着会多出一条已送达的假象。
+     */
     seed(items: ChatMessage[]): void {
-      messages = items;
-      streaming = false;
-      liveIndex.clear();
-      toolIndex.clear();
-      retryIndex.clear();
-      droppedRetryIds.clear();
+      const localRows = messages.filter((message) => isLocalRow(message) && message.kind !== 'user');
+      replace([...items, ...localRows]);
+    },
+    /**
+     * 起点重置（切会话/重连）：调用方的消息面就是新起点，归并器内的旧行一律不保留。
+     * 与 seed 的差别就在「旧本地行去不去」——保留会把上个会话的行带进新会话。
+     */
+    rebaseline(items: ChatMessage[]): void {
+      replace(items);
     },
     snapshot(): SessionSyncState {
       return { messages: droppedRetryIds.size === 0 ? messages : messages.filter((message) => !droppedRetryIds.has(message.id)), streaming };
