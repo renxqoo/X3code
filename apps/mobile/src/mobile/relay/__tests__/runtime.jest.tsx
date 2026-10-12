@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from '@jest/globals';
 
-import { initializeRelayRuntime, attachThread, entriesToMessages, hydrateThread, loadBootstrap } from '../runtime';
+import { initializeRelayRuntime, attachThread, hydrateThread, loadBootstrap } from '../runtime';
 import { setRatchetKv } from '../credentials';
 import * as conversationStoreModule from '@/store/conversation-store';
 import * as historyStoreModule from '@/store/history-store';
@@ -54,30 +54,6 @@ describe('relay runtime（T58 装配）', () => {
   });
 });
 
-describe('entriesToMessages（随迁移规格基线）', () => {
-  it('完整映射：thinking→text→tools 块序 + bash 三态 + images + 失败轮', () => {
-    const messages = entriesToMessages([
-      { kind: 'user', id: 'u1', text: '看图', at: 0, origin: 'user', images: [{ type: 'image', data: 'AAAA', mediaType: 'image/png' }] },
-      { kind: 'assistant', id: 'a1', text: 'done', thinking: 'th', at: 0, toolCalls: [{ id: 'c1', name: 'bash', argsPreview: 'ls', output: 'f', isError: false }], stopReason: 'error', errorMessage: 'boom' },
-      { kind: 'bash', id: 'b1', at: 0, command: 'ls', output: 'ok', exitCode: 0, cancelled: false, truncated: false },
-      { kind: 'bash', id: 'b2', at: 0, command: 'x', output: 'err', exitCode: 3, cancelled: false, truncated: false },
-      { kind: 'user', id: 'u2', text: '压缩', at: 0, meta: 'compaction-summary' },
-    ]);
-    const kinds = messages.map((m) => m.kind);
-    expect(kinds).toEqual(['user', 'thinking', 'assistant', 'tool', 'status', 'tool', 'tool']);
-    expect(messages[0]?.attachments?.[0]?.uri).toBe('data:image/png;base64,AAAA');
-    expect(messages[4]).toMatchObject({ status: 'failed', text: 'boom' });
-    expect(messages[6]).toMatchObject({ status: 'failed', exitCode: 3 });
-    // compaction-summary 不出现
-    expect(messages.some((m) => m.text === '压缩')).toBe(false);
-  });
-
-  it('垃圾条目跳过不崩', () => {
-    expect(entriesToMessages([null, 42, 'x', { kind: 'unknown' }] as never)).toEqual([]);
-  });
-});
-
-
 describe('relay runtime 路由与装配分支', () => {
   beforeEach(() => {
     const map = new Map<string, string>();
@@ -125,9 +101,9 @@ describe('relay runtime 路由与装配分支', () => {
     const client = rt.client as unknown as { dispatch(rawEvent: unknown): void };
     client.dispatch({ type: 'dialogRequest', threadId: 't-x', requestId: 'r1', method: 'confirm', tool: 'bash', summary: '运行' });
     const { useConversationStore } = conversationStoreModule;
-    expect(useConversationStore.getState().permissionRequest?.id).toBe('r1');
+    expect(useConversationStore.getState().permissionQueue[0]?.id).toBe('r1');
     client.dispatch({ type: 'dialogSettled', requestId: 'r1' });
-    expect(useConversationStore.getState().permissionRequest).toBeNull();
+    expect(useConversationStore.getState().permissionQueue).toEqual([]);
   });
 });
 

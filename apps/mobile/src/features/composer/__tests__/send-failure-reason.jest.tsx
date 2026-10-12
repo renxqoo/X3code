@@ -7,7 +7,7 @@
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
-import { initializeRelayRuntime } from '@/mobile/relay/runtime';
+import { initializeRelayRuntime, resyncSessionStore } from '@/mobile/relay/runtime';
 import { renderHook } from '@testing-library/react-native';
 import { useComposerSubmit } from '@/features/composer/use-composer-submit';
 import { useComposerStore } from '@/store/composer-store';
@@ -50,9 +50,11 @@ describe('发送失败原因可见性（症状：只显示 transient）', () => 
   beforeEach(() => {
     invoke.mockReset();
     invoke.mockImplementation((method: string) => Promise.resolve(method === 'session/liveThreads' ? LIVE_T1 : { ok: false, error: { kind: 'transient', message: 'unknown_thread' } }));
-    useComposerStore.setState({ draft: '', sending: false, generating: false });
+    useComposerStore.setState({ draft: '', generating: false });
     useConversationStore.setState({ permissionRequest: null, activeSessionId: 't1', session: { ...useConversationStore.getState().session, id: 't1', messages: [], detached: false } });
     readyBridge();
+    // 归并器是模块单例：上条用例的本地行还在里面，不对齐会被下个快照带进本用例
+    resyncSessionStore();
   });
 
   it('prompt 失败：显示 host 错误码对应文案，不显示 kind', async () => {

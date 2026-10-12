@@ -9,7 +9,7 @@ import { useComposerStore } from '@/store/composer-store';
 import { useConversationStore } from '@/store/conversation-store';
 import { useNavigationStore } from '@/store/navigation-store';
 import { TestWrapper } from '@/test/test-wrapper';
-import { initializeRelayRuntime } from '@/mobile/relay/runtime';
+import { initializeRelayRuntime, resyncSessionStore } from '@/mobile/relay/runtime';
 
 const invoke = jest.fn();
 
@@ -21,23 +21,34 @@ function bridgeOffline(): void {
   invoke.mockImplementation(() => Promise.resolve({ ok: false }));
 }
 
-/** 连接就绪的 bridge：模型目录只能来自它（未连接时面板不给占位模型）。 */
+/**
+ * 连接就绪的 bridge：模型目录只能来自它（未连接时面板不给占位模型）。
+ *
+ * liveThreads 答一个活线程（t1）：发送路径先问宿主表找投递目标（reviveThread），
+ * 表内没有就按「拿不到归档路径」拒绝并报「无法恢复这条会话」——面板类用例测的是
+ * 发送交互，不该顺带落进无路径的拒绝分支。
+ */
 function readyBridge(modelList: Array<{ provider: string; modelId: string; reasoning?: boolean }>): void {
   const runtime = initializeRelayRuntime();
   runtime.status = 'ready';
   (runtime.client as unknown as { invoke: unknown }).invoke = invoke;
   invoke.mockReset();
-  invoke.mockImplementation((method: string) => Promise.resolve(
-    method === 'model/list' ? { ok: true, data: modelList } : { ok: true, data: { sessions: [] } },
-  ));
+  invoke.mockImplementation((method: string) => {
+    if (method === 'model/list') return Promise.resolve({ ok: true, data: modelList });
+    if (method === 'session/liveThreads') return Promise.resolve({ ok: true, data: { sessions: [{ threadId: 't1', state: 'live', streaming: false, sessionPath: '/s/t1.jsonl' }] } });
+    return Promise.resolve({ ok: true, data: { sessions: [] } });
+  });
 }
 
 describe('composer components', () => {
   beforeEach(() => {
     bridgeOffline();
-    useComposerStore.setState({ draft: '', model: '', thinking: 'medium', permission: 'ask', sending: false, generating: false });
+    useComposerStore.setState({ draft: '', model: '', thinking: 'medium', permission: 'ask', generating: false });
     useAttachmentStore.setState({ items: [] });
     useConversationStore.getState().startNewSession();
+    // 事件归并器是模块单例：上个用例的本地行还在里面。不对齐的话，下个快照会把它们
+    // 带进本用例的会话（直接 store.setState 绕过 runtime，不触发 attachThread 的对齐）
+    resyncSessionStore();
     useNavigationStore.setState({ drawerOpen: false, sheet: null });
   });
 

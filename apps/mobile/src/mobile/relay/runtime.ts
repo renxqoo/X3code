@@ -14,15 +14,20 @@ import { createRelayRatchetCodec } from './ratchet-codec';
 import { dialWebSocket } from './ws-dial';
 import { refreshDeviceToken } from './token-refresh';
 import { createKvRatchetStore, preloadRelayCredentials, relayCredentialsStore, type RelayCredentials } from './credentials';
-import { noteThreadPath, noteThreadPaths, threadPathOf } from './thread-paths';
 import { withSavedMeta } from './with-saved-meta';
 import { createSessionSync } from '../state/session-sync';
+import { setSessionSync } from '../state/session-align';
+import { noteThreadPaths } from './thread-paths';
+import { classifyRelayFailure } from './relay-reachability';
+import { bindLocalHistorySink } from '../state/local-history-changes';
+import {
+  activeThreadIdOf, reconcileThread, sessionSyncRefOf, setSessionSyncRef,
+} from './session-lifecycle';
 import { createEventMapper, type EventMapper } from '@x3code/api/events/event-mapper';
 import { createHistorySync } from '../state/history-sync';
 import { useConversationStore } from '@/store/conversation-store';
 import { useHistoryStore } from '@/store/history-store';
 import { useComposerStore } from '@/store/composer-store';
-import type { ChatMessage } from '@/types/domain';
 
 export interface RelayRuntime {
   client: BridgeClient;
@@ -38,6 +43,19 @@ export interface RelayRuntime {
 let runtime: RelayRuntime | null = null;
 const eventMapper: EventMapper = createEventMapper({ now: () => Date.now() });
 let connectInFlight: Promise<void> | null = null;
+
+/**
+ * 装配期失败归一（token 续期抛 / ratchet 读抛 / SecureStore 抛 / socket 建抛）。
+ *
+ * 不吞掉的另一个理由：失败必须能落到可区分的面上。「连不上」与「凭证有问题」
+ * 在用户处是两种完全不同的处置（等网络 vs 重新配对），归一成语义不明的值
+ * 等于把诊断信息扔掉。
+ */
+function assemblyFailureDetail(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/token|credential|secret|key|auth/i.test(message)) return 'auth-rejected';
+  return 'assembly-failed';
+}
 
 export function getRelayRuntime(): RelayRuntime | null {
   return runtime;
@@ -84,17 +102,43 @@ export function initializeRelayRuntime(): RelayRuntime {
 
   // client 经活引用取 transport（connectWithCredentials 换绑后 invoke 即刻生效——H1 修复）
   const liveTransport = { current: transport as unknown as ClientTransportFace };
-  // M8：鉴权拒绝（token 过期）→ 签名挑战续期一次 → 重连（不在退避环里 401 打转）
+  // 鉴权拒绝（token 过期）→ 签名挑战续期一次 → 重连（不在退避环里 401 打转）
+  //
+  // 症状：配对成功过，之后再也连不上，手动重连也没用。
+  // 根因两处：① RN 的 WebSocket 在握手失败时不暴露响应头，relay 的 401(auth) 与
+  // 503(overloaded) 在 onError 里同形，transport 只能报 'closed'——自动续期的判据
+  // 从来不成立；② 续期失败时 authRetryArmed 不复位（只在成功分支），一次失败后
+  // 自动重连永久关闭。两者叠加 = 掉线即永久。
+  //
+  // 修法：① 失败后探测 relay /healthz（免鉴权，relay 已在提供），据此把故障分成
+  // 「网络不可达」与「凭证被拒」；② 无论续期成败都复位 armed。
   let authRetryArmed = true;
   const onStatusWrapper = (status: RelayStatus, detail: string): void => {
-    if (status === 'disconnected' && (detail === 'auth-rejected' || detail === 'connect-exhausted') && authRetryArmed && runtime !== null) {
-      authRetryArmed = false;
+    if (status !== 'disconnected' || !authRetryArmed || runtime === null) return;
+    // assembly-failed 是本模块自己的装配失败面（不来自 transport），一并纳入：
+    // 不纳入则装配失败（如 ratchet store 读不出）永远不会被自动重试
+    if (detail !== 'auth-rejected' && detail !== 'connect-exhausted' && detail !== 'closed' && detail !== 'assembly-failed') return;
+    // armed 只防「同一轮退避里反复续期」，不是「一生只续一次」——所有出口都要复位。
+    // 用 try/finally 而非在 then 尾部：凭据缺失、探测异常等早退路径同样必须解锁，
+    // 否则一次「断开时恰好未配对」就永久关闭自动重连（这正是本缺陷的形态）。
+    authRetryArmed = false;
+    try {
       const credentials = relayCredentialsStore.load();
-      if (credentials !== null) {
-        void runtime.connectWithCredentials(credentials.relayToken).then(() => {
-          authRetryArmed = true;
-        });
-      }
+      // 未配对：无凭证可续期，解锁后由用户完成配对再走正常连接
+      if (credentials === null) return;
+      void classifyRelayFailure(credentials.relayUrl)
+        .then((reachability) => {
+          // relay 本身不可达时续期必然也失败，白白消耗一次挑战；等网络回来由退避环接管
+          if (reachability !== 'reachable') return;
+          return runtime?.connectWithCredentials(credentials.relayToken).catch(() => undefined);
+        })
+        .catch(() => undefined)
+        // 成败都复位：armed 只防「同一轮退避里反复续期」，不是「一生只续一次」。
+        // 旧实现只在成功分支复位，一次失败后自动重连永久关闭。
+        .then(() => { authRetryArmed = true; });
+    } finally {
+      // 同步路径（凭据缺失）的解锁；异步路径已在上方 then 里复位，此处再置真幂等
+      authRetryArmed = true;
     }
   };
   const client = createBridgeClient({
@@ -111,7 +155,7 @@ export function initializeRelayRuntime(): RelayRuntime {
     },
   });
 
-  sessionSyncRef = createSessionSync({
+  setSessionSyncRef(createSessionSync({
     onDialogRequest(request, settledId) {
       if (request === null) {
         if (settledId !== null && settledId !== undefined && settledId.length > 0) {
@@ -126,7 +170,12 @@ export function initializeRelayRuntime(): RelayRuntime {
     onSessionEvent() {
       // 会话级事件已在订阅回调直调 routeEvent——此回灌通道废弃（双路由根治）
     },
-  });
+  }));
+  // 归并器登记给两处消费者：session-lifecycle（事件泵与水合）与 session-align
+  // （本地行入流与起点对齐）。单一真相仍是 createSessionSync 的实例，两处只持引用面
+  setSessionSync(sessionSyncRefOf());
+  // 历史本地变更回流：store 只改投影会被下一条事件整体替换回滚，此处把意图写回真相层
+  bindLocalHistorySink((threadId, change) => { historySyncOf()?.applyLocalChange(threadId, change); });
 
 
   /** L2 帧 → UiEvent（hub 事件名 camelCase 词表翻译——与桌面端同源 event-mapper）+ ui_request 面。 */
@@ -174,8 +223,8 @@ export function initializeRelayRuntime(): RelayRuntime {
     const recordThreadId = textOf(record['threadId']);
     if (type === 'dialogRequest' || type === 'dialogSettled') {
       // 权限卡只对当前活跃会话（或引导态）可见——后台会话请求不打扰当前视图（L1）
-      if (recordThreadId.length === 0 || activeThreadId === null || recordThreadId === activeThreadId) {
-        sessionSyncRef?.handleEvent(record as Record<string, unknown>);
+      if (recordThreadId.length === 0 || activeThreadIdOf() === null || recordThreadId === activeThreadIdOf()) {
+        sessionSyncRefOf()?.handleEvent(record as Record<string, unknown>);
       }
       return;
     }
@@ -184,12 +233,13 @@ export function initializeRelayRuntime(): RelayRuntime {
       routeEvent(event);
       return;
     }
-    if (threadId !== null && threadId === activeThreadId && sessionSyncRef !== null) {
-      sessionSyncRef.handleEvent(record as Record<string, unknown>);
-      const snapshot = sessionSyncRef.snapshot();
+    const sync = threadId !== null && threadId === activeThreadIdOf() ? sessionSyncRefOf() : null;
+    if (sync !== null) {
+      sync.handleEvent(record as Record<string, unknown>);
+      const snapshot = sync.snapshot();
       useConversationStore.getState().appendMessages(snapshot.messages);
       useComposerStore.getState().setGenerating(snapshot.streaming);
-      if (type === 'turnSettled') void reconcileThread(threadId);
+      if (type === 'turnSettled' && threadId !== null) void reconcileThread(threadId);
     }
   });
 
@@ -201,16 +251,17 @@ export function initializeRelayRuntime(): RelayRuntime {
     async connectWithCredentials(_relayToken) {
       const credentials = relayCredentialsStore.load();
       if (credentials === null) return;
-      // 并发护栏（R2 H-6）：in-flight 互斥——await 窗口的二次调用等待/复用前者，防乱序覆盖
+      // 并发护栏：in-flight 互斥——await 窗口的二次调用等待前者，防乱序覆盖。
+      // 必须按前者的成败收敛：旧实现 await 后无条件 return，第二个调用方拿到「已完成」
+      // 却什么都没连上，而 authRetryArmed 的复位正建立在这个假成功之上。
       if (connectInFlight !== null) {
         await connectInFlight;
         return;
       }
       const run = (async () => {
-      try {
         try {
-      // 重建传输（真 codec + RN socket）
-      // token 续期：凭证 token 15min TTL 到期后凭签名挑战换新（失败回落旧值）
+          // 重建传输（真 codec + RN socket）
+          // token 续期：凭证 token 15min TTL 到期后凭签名挑战换新（失败回落旧值）
       const refreshed = await refreshDeviceToken(credentials);
       const freshToken = refreshed?.token ?? credentials.relayToken;
       const freshNodeId = refreshed?.relayNodeId ?? credentials.relayNodeId;
@@ -256,13 +307,18 @@ export function initializeRelayRuntime(): RelayRuntime {
       (runtime as RelayRuntime & { credentials: RelayCredentials | null }).credentials = credentials;
       real.connect();
         } catch (error) {
+          // 互斥量先释放再触发自愈：onStatusWrapper 会同步调 connectWithCredentials，
+          // 若此时 connectInFlight 仍是本次的 run，自愈重试会撞上自己的互斥量而
+          // 静默空转（await 立即返回、不重连也不报错）——正是这里要修的「一次失败即永久」。
+          connectInFlight = null;
+          // 装配失败必须可见：吞掉它等于「配对成功却连不上」且零原因（用户只能反复点
+          // 重连）。落到连接失败面，由 onStatusWrapper 走故障分类与自动续期。
           (runtime as RelayRuntime & { status: RelayStatus }).status = 'disconnected';
           notifyStatusListeners();
-          void error;
+          onStatusWrapper('disconnected', assemblyFailureDetail(error));
+        } finally {
+          connectInFlight = null;
         }
-      } finally {
-        connectInFlight = null;
-      }
       })();
       connectInFlight = run;
       await run;
@@ -273,117 +329,6 @@ export function initializeRelayRuntime(): RelayRuntime {
     },
   } as RelayRuntime;
   return runtime;
-}
-
-let activeThreadId: string | null = null;
-
-export function attachThread(threadId: string | null): void {
-  activeThreadId = threadId;
-  void initializeRelayRuntime();
-  sessionSyncRef?.reset();
-  if (threadId === null) {
-    useConversationStore.getState().startNewSession();
-  }
-}
-
-let sessionSyncRef: ReturnType<typeof createSessionSync> | null = null;
-/**
- * 历史水化（session/entries；staleGuard：await 期间切会话弃用迟到载荷）。
- * 会话在 PC 侧闲置 park 后，worker 已收编——get_entries 只在 host 直接读档面可用，
- * 事件流则按 thread 订阅投递；水化失败时先尝试 resume 唤活再读一次。
- */
-export async function hydrateThread(threadId: string): Promise<void> {
-  const rt = getRelayRuntime();
-  if (rt === null) return;
-  const outcome = (await rt.client.invoke('session/entries', { threadId })) as { ok: boolean; data?: { items?: unknown[] } };
-  if (activeThreadId !== threadId) return;
-  if (outcome.ok) {
-    applyHydrated(threadId, outcome.data?.items);
-    return;
-  }
-  const revived = await reviveThread(threadId);
-  if (!revived.ok || activeThreadId !== threadId) return;
-  const retry = (await rt.client.invoke('session/entries', { threadId: revived.threadId })) as { ok: boolean; data?: { items?: unknown[] } };
-  if (!retry.ok) return;
-  switchActiveThread(revived.threadId);
-  applyHydrated(revived.threadId, retry.data?.items);
-}
-
-function applyHydrated(threadId: string, rawItems: unknown): void {
-  const sync = sessionSyncRef;
-  if (sync === null) return;
-  // data.items 经 mapResponseData 已是 ChatMessage[]（WAL→HistoryItem 折叠在 response-map）
-  sync.seed(Array.isArray(rawItems) ? (rawItems as ChatMessage[]) : []);
-  useConversationStore.getState().appendMessages(sync.snapshot().messages);
-  void threadId;
-}
-
-/**
- * parked/dead 会话唤活，语义与 PC 端 resolveTarget 同款。
- *
- * 顺序要紧：**先问宿主表，再看本地路径**。设备面的路径索引是启动时快照，
- * 桌面端之后重开过的会话（另一台设备/桌面自己唤的）本地可能没记到路径，
- * 但它在宿主表里就是活的、原 id 即投递目标。没有路径就放弃会把「宿主明明
- * 有活线程」误判成不可用——这正是手机端对 PC 侧会话发不出消息的成因。
- * 路径只作兜底：表内没有才按 sessionPath resume（可能换发新 threadId）。
- */
-export async function reviveThread(threadId: string): Promise<{ ok: true; threadId: string } | { ok: false; reason: string }> {
-  const rt = getRelayRuntime();
-  if (rt === null) return { ok: false, reason: 'runtime_missing' };
-  const sessionPath = threadPathOf(threadId);
-  const rows = await liveThreadRows();
-  // ① 原 id 仍在表：它就是投递目标（同时补记路径，供后续按路径收养）
-  const byId = rows.find((row) => textOf(row['threadId']) === threadId);
-  if (byId !== undefined) {
-    const path = rowSessionPath(byId);
-    if (path !== null) noteThreadPaths([byId]);
-    return { ok: true, threadId };
-  }
-  if (sessionPath === null || sessionPath.length === 0) return { ok: false, reason: 'no_session_path' };
-  // ② 同路径被桌面端换发过新 id：收养既有表项，不重复 resume
-  const holder = rows.find((row) => rowSessionPath(row) === sessionPath);
-  if (holder !== undefined) {
-    const id = textOf(holder['threadId']);
-    if (id.length > 0) {
-      noteThreadPaths([holder]);
-      return { ok: true, threadId: id };
-    }
-  }
-  // ③ 表内没有：按路径 resume（可能换发新 threadId）
-  const outcome = (await rt.client.invoke('session/resume', { sessionPath })) as {
-    ok: boolean;
-    data?: { threadId?: string };
-    error?: { message?: string };
-  };
-  if (outcome.ok && typeof outcome.data?.threadId === 'string') {
-    noteThreadPath(outcome.data.threadId, sessionPath);
-    return { ok: true, threadId: outcome.data.threadId };
-  }
-  return { ok: false, reason: outcome.error?.message ?? 'resume_failed' };
-}
-
-/** thread/list 原始行（失败按空表降级——调用方据此走 resume 兜底）。 */
-async function liveThreadRows(): Promise<Array<Record<string, unknown>>> {
-  const rt = getRelayRuntime();
-  if (rt === null) return [];
-  const outcome = (await rt.client.invoke('session/liveThreads', {})) as { ok: boolean; data?: { sessions?: unknown } };
-  if (!outcome.ok || !Array.isArray(outcome.data?.sessions)) return [];
-  return outcome.data.sessions.filter((raw): raw is Record<string, unknown> => typeof raw === 'object' && raw !== null);
-}
-
-function rowSessionPath(row: Record<string, unknown>): string | null {
-  const path = row['sessionPath'];
-  return typeof path === 'string' && path.length > 0 ? path : null;
-}
-
-function switchActiveThread(threadId: string): void {
-  activeThreadId = threadId;
-  const session = useConversationStore.getState().session;
-  if (session.id !== threadId) useConversationStore.getState().openSession({ ...session, id: threadId });
-}
-
-async function reconcileThread(threadId: string): Promise<void> {
-  await hydrateThread(threadId);
 }
 
 /** 事件字段安全取串（object → ''）。 */
@@ -410,9 +355,9 @@ function routeEvent(event: UiEvent): void {
     const threadId = textOf(record['threadId']);
     eventMapper.dispose(threadId); // L-3
     historySyncOf()?.updateSession({ threadId, state: 'dead' });
-    if (threadId === activeThreadId) {
-      sessionSyncRef?.handleEvent({ type: 'turnSettled', threadId, ok: false, reason: 'session ended' });
-      const snapshot = sessionSyncRef?.snapshot();
+    if (threadId === activeThreadIdOf()) {
+      sessionSyncRefOf()?.handleEvent({ type: 'turnSettled', threadId, ok: false, reason: 'session ended' });
+      const snapshot = sessionSyncRefOf()?.snapshot();
       if (snapshot !== undefined) {
         useConversationStore.getState().appendMessages(snapshot.messages);
         useComposerStore.getState().setGenerating(false);
@@ -425,76 +370,6 @@ function routeEvent(event: UiEvent): void {
 let historySyncRef: ReturnType<typeof createHistorySync> | null = null;
 function historySyncOf(): ReturnType<typeof createHistorySync> | null {
   return historySyncRef;
-}
-
-/** HistoryItem[]（contracts）→ ChatMessage[]（PC 语义对齐——块序/bash 三态/images/失败轮）。 */
-export function entriesToMessages(items: unknown[]): ChatMessage[] {
-  const messages: ChatMessage[] = [];
-  for (const raw of items) {
-    if (typeof raw !== 'object' || raw === null) continue;
-    const item = raw as Record<string, unknown>;
-    const kind = textOf(item['kind']);
-    const atMs = Number(item['at'] ?? 0);
-    const at = new Date(Number.isFinite(atMs) ? atMs : 0).toISOString();
-    if (kind === 'user') {
-      if (item['meta'] === 'compaction-summary') continue;
-      const message: ChatMessage = { id: textOf(item['id']) || `u${messages.length}`, kind: 'user', text: textOf(item['text']), createdAt: at };
-      const images = item['images'];
-      if (Array.isArray(images) && images.length > 0) {
-        message.attachments = (images as Array<Record<string, unknown>>).map((image, index) => ({
-          id: `img-${textOf(item['id']) || index}`,
-          name: 'image',
-          size: 0,
-          kind: 'image' as const,
-          status: 'ready' as const,
-          ...(typeof image['data'] === 'string' ? { uri: `data:${textOf(image['mediaType'])};base64,${image['data']}` } : {}),
-        }));
-      }
-      messages.push(message);
-      continue;
-    }
-    if (kind === 'assistant') {
-      const calls = item['toolCalls'];
-      const toolCalls = Array.isArray(calls) ? (calls as Array<Record<string, unknown>>) : [];
-      const text = textOf(item['text']);
-      const thinking = textOf(item['thinking']);
-      if (thinking.length > 0) {
-        messages.push({ id: `think-${textOf(item['id']) || messages.length}`, kind: 'thinking', text: thinking, createdAt: at, status: 'ok' });
-      }
-      if (text.length > 0) {
-        messages.push({ id: textOf(item['id']) || `a${messages.length}`, kind: 'assistant', text, createdAt: at });
-      }
-      for (const call of toolCalls) {
-        const tool: ChatMessage = {
-          id: textOf(call['id']) || `t${messages.length}`,
-          kind: 'tool',
-          text: textOf(call['output']),
-          createdAt: at,
-          status: call['isError'] === true ? 'failed' : 'ok',
-          toolName: textOf(call['name']) || 'tool',
-          argsPreview: textOf(call['argsPreview']),
-        };
-        const hunks = call['editHunks'];
-        if (Array.isArray(hunks)) tool.editHunks = hunks as NonNullable<ChatMessage['editHunks']>;
-        const spawns = call['subagents'];
-        if (Array.isArray(spawns)) tool.subagents = spawns as NonNullable<ChatMessage['subagents']>;
-        messages.push(tool);
-      }
-      const stopReason = textOf(item['stopReason']);
-      if (stopReason.length > 0 && stopReason !== 'end_turn') {
-        const errorMessage = textOf(item['errorMessage']);
-        messages.push({ id: `fail-${textOf(item['id']) || messages.length}`, kind: 'status', text: errorMessage.length > 0 ? errorMessage : `模型终止（${stopReason}）`, createdAt: at, status: 'failed', summary: '任务未完成' });
-      }
-      continue;
-    }
-    if (kind === 'bash') {
-      const cancelled = item['cancelled'] === true;
-      const exitCode = typeof item['exitCode'] === 'number' ? (item['exitCode'] as number) : null;
-      const status: ChatMessage['status'] = cancelled ? 'stopped' : exitCode === null || exitCode === 0 ? 'ok' : 'failed';
-      messages.push({ id: `bash-${textOf(item['id']) || messages.length}`, kind: 'tool', text: textOf(item['output']), createdAt: at, status, toolName: 'bash', argsPreview: textOf(item['command']), exitCode });
-    }
-  }
-  return messages;
 }
 
 // ---- 状态订阅（React hook 面）----
@@ -526,7 +401,7 @@ export function loadBootstrap(client: Client): Promise<void> {
     try {
       // host 无聚合命令（R2 H-4④）：thread/list + thread/list_saved 并行拼装（偏好经 settings/get）
       const results = (await Promise.all([
-        client.invoke('session/liveThreads', {}),
+        client.invoke('session/liveThreads', { includePreview: true }),
         client.invoke('session/listSaved', {}),
       ])) as unknown as Array<{ ok: boolean; data?: unknown }>;
       const threadsOut = results[0];
@@ -583,6 +458,10 @@ function rnSocketFactoryWithToken(url: string, token: string) {
 export type { Unsubscribe, ApiMethod, ApiOutcome };
 
 // ---- LAN 兼容别名（UI 调用面零改动——MIGRATION D8：全部 UI 屏经抽象消费）----
+
+// 会话消息面的写入口与起点对齐在 session-align 定义——此处转出，调用方 import 不分裂
+export { appendLocalRow, rebaselineSession as resyncSessionStore } from '../state/session-align';
+export { attachThread, hydrateThread, openSessionAndAttach, reviveThread } from './session-lifecycle';
 
 export const initializeBridge = initializeRelayRuntime;
 export const getBridge = getRelayRuntime;

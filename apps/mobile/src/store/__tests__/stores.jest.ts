@@ -16,7 +16,7 @@ const SESSIONS = [
 describe('mobile UI stores', () => {
   beforeEach(() => {
     useNavigationStore.setState({ drawerOpen: false, sheet: null });
-    useComposerStore.setState({ draft: '', model: '', thinking: 'medium', permission: 'ask', sending: false, generating: false });
+    useComposerStore.setState({ draft: '', model: '', thinking: 'medium', permission: 'ask', generating: false });
     useHistoryStore.setState({ sessions: SESSIONS, query: '' });
     useAttachmentStore.setState({ items: [] });
     useSettingsStore.setState({ theme: 'system', defaultModel: 'walk/walk-model', defaultThinking: 'medium', defaultPermission: 'ask', notifications: true, haptics: true, compactHistory: false });
@@ -100,11 +100,51 @@ describe('mobile UI stores', () => {
     const session = SESSIONS[0];
     if (session === undefined) throw new Error('fixture missing');
     useConversationStore.getState().openSession(session);
-    useConversationStore.getState().appendMessage({ id: 'm', kind: 'user', text: '继续', createdAt: 'now' });
+    // 消息流只由归并器快照写入口（appendMessages）——无直写 append 面可测了
+    useConversationStore.getState().appendMessages([...session.messages, { id: 'm', kind: 'user', text: '继续', createdAt: 'now' }]);
     expect(useConversationStore.getState().session.messages).toHaveLength(session.messages.length + 1);
     useConversationStore.getState().requestPermission({ id: 'p1', title: '运行测试', command: 'bun test', approved: null });
-    useConversationStore.getState().resolvePermission(true);
-    expect(useConversationStore.getState().permissionRequest?.approved).toBe(true);
+    expect(useConversationStore.getState().permissionQueue).toHaveLength(1);
+    // 应答即出队（原子 action）：不允许留下「已标记但卡还在」的残卡
+    useConversationStore.getState().answerPermission(true);
+    expect(useConversationStore.getState().permissionQueue).toHaveLength(0);
+  });
+
+  it('权限队列：多请求并发时逐张应答，被顶掉的仍可应答（症状：第二个请求覆盖第一个）', () => {
+    useConversationStore.getState().startNewSession();
+    useConversationStore.getState().requestPermission({ id: 'p1', title: '第一条', command: 'bun test', approved: null });
+    useConversationStore.getState().requestPermission({ id: 'p2', title: '第二条', command: 'bun build', approved: null });
+    // 队首是第一张卡
+    expect(useConversationStore.getState().permissionQueue[0]?.id).toBe('p1');
+    useConversationStore.getState().answerPermission(true);
+    // 第一张应答后出队，第二张顶上且仍可应答
+    expect(useConversationStore.getState().permissionQueue[0]?.id).toBe('p2');
+    useConversationStore.getState().answerPermission(false);
+    expect(useConversationStore.getState().permissionQueue).toHaveLength(0);
+  });
+
+  it('权限队列：同一 requestId 重复弹卡不堆叠（事件重放不留残卡）', () => {
+    useConversationStore.getState().startNewSession();
+    useConversationStore.getState().requestPermission({ id: 'p1', title: '第一条', command: 'bun test', approved: null });
+    useConversationStore.getState().requestPermission({ id: 'p1', title: '第一条', command: 'bun test', approved: null });
+    expect(useConversationStore.getState().permissionQueue).toHaveLength(1);
+  });
+
+  it('权限队列：dialogSettled 按 requestId 摘卡，不误伤队首以外的', () => {
+    useConversationStore.getState().startNewSession();
+    useConversationStore.getState().requestPermission({ id: 'p1', title: '第一条', command: 'a', approved: null });
+    useConversationStore.getState().requestPermission({ id: 'p2', title: '第二条', command: 'b', approved: null });
+    useConversationStore.getState().settlePermission('p1');
+    expect(useConversationStore.getState().permissionQueue.map((item) => item.id)).toEqual(['p2']);
+  });
+
+  it('权限队列：应答后卡片不可二次应答（出队即消失，不留 approved 残卡）', () => {
+    useConversationStore.getState().startNewSession();
+    useConversationStore.getState().requestPermission({ id: 'p1', title: '第一条', command: 'a', approved: null });
+    useConversationStore.getState().answerPermission(true);
+    // 再应答一次不应改变任何状态（无卡可答）
+    useConversationStore.getState().answerPermission(false);
+    expect(useConversationStore.getState().permissionQueue).toHaveLength(0);
   });
 
   it('chooses a workspace for new tasks', () => {

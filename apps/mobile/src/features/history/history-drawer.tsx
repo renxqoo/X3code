@@ -7,6 +7,7 @@ import { useAppTheme } from '@/theme/theme-context';
 import { radius, spacing } from '@/theme/tokens';
 import { IconButton } from '@/components/ui/icon-button';
 import { SectionHeader } from '@/components/ui/section-header';
+import { KeyboardAvoidingPanel } from '@/components/ui/keyboard-avoiding-panel';
 import { X3codeMark } from '@/components/brand/x3code-mark';
 import { GroupMoreRow } from '@/features/history/group-more-row';
 import { ProjectGroupHeader } from '@/features/history/project-group-header';
@@ -17,7 +18,7 @@ import { useConversationStore } from '@/store/conversation-store';
 import { useGroupFoldStore } from '@/store/group-fold-store';
 import { useHistoryStore } from '@/store/history-store';
 import { useNavigationStore } from '@/store/navigation-store';
-import { attachThread, hydrateThread } from '@/mobile/relay/runtime';
+import { openSessionAndAttach } from '@/mobile/relay/runtime';
 import { copy } from '@/strings/zh';
 import type { ConversationSession } from '@/types/domain';
 
@@ -33,7 +34,6 @@ export function HistoryDrawer() {
   const setQuery = useHistoryStore((state) => state.setQuery);
   const selectSession = useHistoryStore((state) => state.selectSession);
   const currentSessionId = useConversationStore((state) => state.session.id);
-  const openSession = useConversationStore((state) => state.openSession);
   const startNewSession = useConversationStore((state) => state.startNewSession);
   const chooseWorkspace = useConversationStore((state) => state.chooseWorkspace);
   const collapsed = useGroupFoldStore((state) => state.collapsed);
@@ -41,12 +41,8 @@ export function HistoryDrawer() {
   const toggleCollapsed = useGroupFoldStore((state) => state.toggleCollapsed);
   const toggleExpanded = useGroupFoldStore((state) => state.toggleExpanded);
   const openRemoteSession = React.useCallback((session: ConversationSession) => {
-    openSession(session);
-    // 脱离宿主表的归档会话：桌面端未在册，手机端无路径可唤活——不发起注定失败的水化
-    if (session.detached === true) return;
-    attachThread(session.id);
-    void hydrateThread(session.id);
-  }, [openSession]);
+    void openSessionAndAttach(session);
+  }, []);
   const handleOpen = React.useCallback((session: ConversationSession) => {
     selectSession(session.id);
     openRemoteSession(session);
@@ -90,6 +86,7 @@ export function HistoryDrawer() {
   return (
     <Modal animationType="fade" onRequestClose={() => setDrawerOpen(false)} transparent visible={open}>
       <View style={{ backgroundColor: colors.overlay, flex: 1 }}><Pressable accessibilityLabel={copy.closeHistory} onPress={() => setDrawerOpen(false)} style={{ flex: 1 }} /><View accessibilityLabel={copy.history} style={{ backgroundColor: colors.background, borderTopRightRadius: 28, bottom: 0, left: 0, paddingTop: insets.top, position: 'absolute', shadowColor: '#000000', shadowOffset: { width: 5, height: 0 }, shadowOpacity: 0.12, shadowRadius: 20, top: 0, width: '88%' }}>
+        <KeyboardAvoidingPanel backgroundColor={colors.background} style={{ flex: 1 }}>
         <View style={{ alignItems: 'center', flexDirection: 'row', minHeight: 58, paddingHorizontal: spacing.xs3 }}><X3codeMark size={30} /><Text style={{ color: colors.text, fontSize: 17, fontWeight: '700', marginLeft: 9 }}>{copy.appName}</Text><IconButton icon={X} label={copy.close} onPress={() => setDrawerOpen(false)} style={{ marginLeft: 'auto' }} /></View>
         <View style={{ paddingHorizontal: spacing.xs3 }}><Pressable accessibilityRole="button" onPress={() => { startNewSession(); setDrawerOpen(false); }} style={{ alignItems: 'center', backgroundColor: 'transparent', borderRadius: radius.lg, flexDirection: 'row', minHeight: 54, paddingHorizontal: 4 }}><SquarePen color={colors.text} size={21} /><Text style={{ color: colors.text, fontSize: 16, fontWeight: '500', marginLeft: 12 }}>{copy.newChat}</Text></Pressable>
           <DrawerLink icon={Laptop} label={copy.connectedComputer} onPress={() => { router.push('/devices'); setDrawerOpen(false); }} />
@@ -100,6 +97,8 @@ export function HistoryDrawer() {
         <SectionList<ConversationSession, HistorySection>
           contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xs6, paddingHorizontal: spacing.xs2 }}
           initialNumToRender={12}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           ListEmptyComponent={listEmpty}
           ListFooterComponent={listFooter}
@@ -112,6 +111,7 @@ export function HistoryDrawer() {
           windowSize={9}
         />
         <View style={{ padding: spacing.xs5 }}><DrawerLink icon={Archive} label={copy.archive} onPress={() => { router.push('/archived'); setDrawerOpen(false); }} /><Pressable accessibilityRole="button" onPress={() => { router.push('/settings'); setDrawerOpen(false); }} style={{ alignItems: 'center', flexDirection: 'row', minHeight: 46 }}><Settings color={colors.text} size={19} /><Text style={{ color: colors.text, fontSize: 15, fontWeight: '600', marginLeft: 11 }}>{copy.settingsTitle}</Text></Pressable></View>
+        </KeyboardAvoidingPanel>
       </View></View>
     </Modal>
   );

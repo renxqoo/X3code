@@ -116,7 +116,7 @@ describe("chat and history components", () => {
     await view.rerender(<PermissionCard />);
     await fireEvent.press(view.getByText("允许一次"));
     // 应答即清卡（dialog/respond 发送；裁决经事件流对账）
-    expect(useConversationStore.getState().permissionRequest).toBeNull();
+    expect(useConversationStore.getState().permissionQueue).toEqual([]);
   });
 
   it("renders chat header and opens history/task configuration", async () => {

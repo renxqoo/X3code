@@ -1,7 +1,8 @@
 import { useComposerStore } from '@/store/composer-store';
 import { useConversationStore } from '@/store/conversation-store';
 import { useAttachmentStore } from '@/store/attachment-store';
-import { attachThread, getBridge, reviveThread } from '@/mobile/relay/runtime';
+import { appendLocalRow, attachThread, getBridge, reviveThread } from '@/mobile/relay/runtime';
+import { localRowId } from '@/mobile/state/session-sync';
 import { useKnownWorkspaces } from '@/features/workspace/use-known-workspaces';
 import { copy, copyReason } from '@/strings/zh';
 import type { ChatMessage } from '@/types/domain';
@@ -15,16 +16,19 @@ import type { ChatMessage } from '@/types/domain';
 export function useComposerSubmit(): () => void {
   const draft = useComposerStore((state) => state.draft);
   const submitDraft = useComposerStore((state) => state.submitDraft);
-  const appendMessage = useConversationStore((state) => state.appendMessage);
   const items = useAttachmentStore((state) => state.items);
   const clearAttachments = useAttachmentStore((state) => state.clearAttachments);
   const workspaces = useKnownWorkspaces();
-  return () => {
+  /** 本地行的 id 按失败原因归一：同因重试不堆叠行，重试成功也不残留旧提示。 */
+  const note = (key: string, text: string): void => {
+    appendLocalRow({ id: localRowId(key), kind: 'status', text, createdAt: new Date().toISOString(), status: 'failed', summary: copy.notDelivered });
+  };
+  const submit = () => {
     const text = draft.trim();
     if (text.length === 0) return;
     const bridge = getBridge();
     if (bridge?.status !== 'ready') {
-      appendMessage({ id: `send-offline-${Date.now()}`, kind: 'status', text: copy.sendNotConnected, createdAt: new Date().toISOString(), status: 'failed', summary: copy.notDelivered } as ChatMessage);
+      note('send-not-connected', copy.sendNotConnected);
       return;
     }
     if (!submitDraft()) return;
@@ -38,12 +42,13 @@ export function useComposerSubmit(): () => void {
     // 等于替电脑端授权了一个从未确认的工作区（且 hub 会照单写入信任注册表）。
     const startCwd = threadId === null ? known?.path : undefined;
     if (threadId === null && startCwd === undefined) {
-      appendMessage({ id: `send-unknown-workspace-${Date.now()}`, kind: 'status', text: copy.workspaceRequired, createdAt: new Date().toISOString(), status: 'failed', summary: copy.notDelivered } as ChatMessage);
+      note('workspace-required', copy.workspaceRequired);
       return;
     }
     const failNote = (reason: string): void => {
-      // 发送失败可见化（M6）：状态行入流——不再静默吞错
-      useConversationStore.getState().appendMessage({ id: `send-fail-${Date.now()}`, kind: 'status', text: copy.sendFailed(reason), createdAt: new Date().toISOString(), status: 'failed', summary: copy.notDelivered });
+      // 发送失败可见化：经本地行入流——直改 store 会被下一个事件快照冲掉。
+      // id 带时间戳：连续两次失败（换原因重试）得两行，不被前一次的 id 去重掉
+      note(`send-failed-${Date.now()}`, copy.sendFailed(reason));
       useComposerStore.getState().setGenerating(false);
     };
     /**
@@ -95,7 +100,9 @@ export function useComposerSubmit(): () => void {
       const prompted = await promptLive(threadId);
       if (!prompted.ok && prompted.switched !== true) reportFailure(threadId, copyReason(prompted.error?.message));
     })();
-    appendMessage({ id: `user-${Date.now()}`, kind: 'user', text, createdAt: new Date().toISOString(), ...(attachments.length > 0 ? { attachments } : {}) } as ChatMessage);
+    // 乐观回显（带时间戳 id：同一会话可多次发送同一句话，固定 id 会互相去重掉）
+    appendLocalRow({ id: localRowId(`user-${Date.now()}`), kind: 'user', text, createdAt: new Date().toISOString(), ...(attachments.length > 0 ? { attachments } : {}) } as ChatMessage);
     clearAttachments();
   };
+  return submit;
 }

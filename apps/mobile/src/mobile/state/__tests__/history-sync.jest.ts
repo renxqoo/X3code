@@ -38,7 +38,7 @@ describe('history-sync', () => {
   it('updateSession 保持既有偏好与消息；removeSession 删行', () => {
     const s = sync();
     s.seedBootstrap([{ threadId: 't1', title: 'A', cwd: '/a', state: 'live', sessionPath: '/s/a.jsonl', lastActivityAt: 1 }], [], { pinnedSessions: ['/s/a.jsonl'], archivedSessions: [] });
-    s.setLocalPreference('t1', { pinned: true });
+    s.applyLocalChange('t1', { pinned: true });
     s.updateSession({ threadId: 't1', title: 'A2', state: 'live', lastActivityAt: 5 });
     let sessions = emitted[emitted.length - 1] ?? [];
     expect(sessions.find((x) => x.id === 't1')?.title).toBe('A2');

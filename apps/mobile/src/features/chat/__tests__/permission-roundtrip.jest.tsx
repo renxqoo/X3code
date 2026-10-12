@@ -26,7 +26,7 @@ function stubBridge(status: 'disconnected' | 'connected') {
 
 describe('权限确认往返（ui_request → 授权卡 → ui_response）', () => {
   beforeEach(() => {
-    useConversationStore.setState({ permissionRequest: null, activeSessionId: 't1' });
+    useConversationStore.setState({ activeSessionId: 't1' });
   });
 
   it('允许一次：按 requestId 发 ui_response 且 payload 为 confirmed:true，随后清卡', async () => {
@@ -48,7 +48,7 @@ describe('权限确认往返（ui_request → 授权卡 → ui_response）', () 
       seq: 1,
       body: { requestId: 'req-7', threadId: 't1', method: 'confirm', payload: { confirmed: true } },
     });
-    expect(useConversationStore.getState().permissionRequest).toBeNull();
+    expect(useConversationStore.getState().permissionQueue).toEqual([]);
   });
 
   it('拒绝：payload 为 confirmed:false', async () => {
@@ -70,7 +70,7 @@ describe('权限确认往返（ui_request → 授权卡 → ui_response）', () 
       seq: 1,
       body: { requestId: 'req-8', threadId: 't1', method: 'confirm', payload: { confirmed: false } },
     });
-    expect(useConversationStore.getState().permissionRequest).toBeNull();
+    expect(useConversationStore.getState().permissionQueue).toEqual([]);
   });
 
   it('bridge 未就绪时不发帧（静默跳过而非误发空 requestId）', async () => {
@@ -86,6 +86,6 @@ describe('权限确认往返（ui_request → 授权卡 → ui_response）', () 
     await fireEvent.press(view.getByText('允许一次'));
 
     expect(sendFrame).not.toHaveBeenCalled();
-    expect(useConversationStore.getState().permissionRequest).toBeNull();
+    expect(useConversationStore.getState().permissionQueue).toEqual([]);
   });
 });

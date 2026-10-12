@@ -13,7 +13,7 @@ import { useConversationStore } from '@/store/conversation-store';
 import { useAttachmentStore } from '@/store/attachment-store';
 import { useHistoryStore } from '@/store/history-store';
 import { testSession } from '@/test/session-fixture';
-import { initializeRelayRuntime, loadBootstrap } from '@/mobile/relay/runtime';
+import { initializeRelayRuntime, loadBootstrap, resyncSessionStore } from '@/mobile/relay/runtime';
 
 interface InvokeLog {
   command: string;
@@ -59,9 +59,11 @@ async function submitOnce(): Promise<void> {
 
 describe('发送管线（症状：发不出去 + 只显示未知错误）', () => {
   beforeEach(() => {
-    useComposerStore.setState({ draft: '', sending: false, generating: false });
+    useComposerStore.setState({ draft: '', generating: false });
     useAttachmentStore.setState({ items: [] });
     useConversationStore.getState().startNewSession();
+    // 事件归并器是模块单例：上个用例的本地行还在里面，不对齐会被下个快照带进本用例
+    resyncSessionStore();
     // 新建会话只认电脑端候选内的目录（cwd 守卫）：给一条在册工作空间
     useHistoryStore.setState({ sessions: [testSession('ws-session', { project: '/work/agent-app' })], query: '' });
     useConversationStore.getState().chooseWorkspace('/work/agent-app', 'agent-app', '/work/agent-app');

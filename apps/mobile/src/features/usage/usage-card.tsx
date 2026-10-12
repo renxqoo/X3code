@@ -18,11 +18,15 @@ export function UsageCard() {
   const { status } = useBridgeStatus();
   const [rows, setRows] = React.useState<readonly UsageRow[] | null>(null);
 
+  const activeSessionId = useConversationStore((state) => state.activeSessionId);
+
   React.useEffect(() => {
     if (status !== 'ready') return;
     const bridge = getBridge();
     if (bridge === null) return;
-    const threadId = useConversationStore.getState().activeSessionId;
+    // 订阅来的值，不读 getState()：后者在依赖数组里无从体现，切会话不会重跑——
+    // 上一条用例正因此显示上一个会话的 token 占用
+    const threadId = activeSessionId;
     if (threadId === null) {
       setRows([]);
       return;
@@ -46,7 +50,7 @@ export function UsageCard() {
       }
       setRows(rowsOut);
     });
-  }, [status]);
+  }, [status, activeSessionId]);
 
   const list: readonly UsageRow[] = rows ?? [];
 
