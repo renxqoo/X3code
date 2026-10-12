@@ -5,6 +5,7 @@
  * 节点 id 随本次应答落盘，下次续期免一次探测往返）；失败返回 null（调用方回落旧 token）。
  */
 import { signBytes } from '@x3code/relay-protocol';
+import { relayHttpOrigin } from './discover';
 import type { RelayCredentials } from './credentials';
 
 export interface RefreshedToken {
@@ -14,7 +15,7 @@ export interface RefreshedToken {
 
 export async function refreshDeviceToken(credentials: RelayCredentials): Promise<RefreshedToken | null> {
   // URL 构造避免可变 API（RN URL polyfill pathname 只读——赋值抛 TypeError）
-  const base = credentials.relayUrl.replace(/^ws/, 'http').replace(/\/$/, '');
+  const base = relayHttpOrigin(credentials.relayUrl).replace(/\/$/, '');
   const nonce = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');

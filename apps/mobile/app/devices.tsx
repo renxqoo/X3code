@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Text, TextInput, View } from 'react-native';
 import { Link2, RefreshCw, Smartphone } from 'lucide-react-native';
 import { PageHeader } from '@/components/navigation/page-header';
 import { Card } from '@/components/ui/card';
@@ -15,6 +15,8 @@ import { createPairingSession, generateDeviceIdentity, type PairingStep } from '
 import { dialWebSocket } from '@/mobile/relay/ws-dial';
 import { relayCredentialsStore } from '@/mobile/relay/credentials';
 import { QrScanModal } from '@/mobile/relay/qr-scan-modal';
+import { TextField } from '@/components/ui/text-field';
+import { KeyboardScrollScreen } from '@/components/ui/keyboard-scroll-screen';
 import { discoverGateway } from '@/mobile/relay/discover';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -77,6 +79,7 @@ export default function DevicesRoute() {
   const { colors } = useAppTheme();
   const { status, runtime } = useRelayStatus();
   const [pairCode, setPairCode] = React.useState('');
+  const [pairRelayUrl, setPairRelayUrl] = React.useState('');
   const [pairing, setPairing] = React.useState(false);
   const [pairError, setPairError] = React.useState<string | null>(null);
   const [hasCredentials, setHasCredentials] = React.useState(relayCredentialsStore.load() !== null);
@@ -154,7 +157,7 @@ export default function DevicesRoute() {
   return (
     <View style={{ backgroundColor: colors.settingsBackground, flex: 1 }}>
       <PageHeader title="设备与连接" />
-      <ScrollView contentContainerStyle={{ padding: spacing.xs3 }}>
+      <KeyboardScrollScreen backgroundColor={colors.settingsBackground} scrollProps={{ contentContainerStyle: { padding: spacing.xs3 } }}>
         <Card style={{ alignItems: 'center', padding: spacing.xs5 }}>
           <View style={{ alignItems: 'center', backgroundColor: colors.surfaceSubtle, borderRadius: 30, height: 60, justifyContent: 'center', width: 60 }}>
             <Smartphone color={colors.text} size={27} />
@@ -216,15 +219,30 @@ export default function DevicesRoute() {
           onPress={() => {
             void (async () => {
               setPairError(null);
-              const hit = await discoverGateway(pairCode);
+              const hit = await discoverGateway(pairCode, pairRelayUrl);
               if (hit === null) {
                 setPairError(copy.pairDiscoverMiss);
+                return;
+              }
+              // 空 ticket 必然撞 /pairing 握手 401（relay 只认 pairing kind 的 token，
+              // 手机端无法自造）——在此拦下并指向二维码路径，不让用户等一个必然失败的连接。
+              if (hit.pairingTicket.length === 0) {
+                setPairError(copy.pairNoTicket);
                 return;
               }
               void pairWithTicket(hit.relayUrl, hit.pairingId, hit.installationId, hit.pairingTicket, undefined, pairCode, hit.gatewayKeyFingerprint);
             })();
           }}
           size="small"
+        />
+        <TextField
+          accessibilityLabel={copy.pairRelayUrlLabel}
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setPairRelayUrl}
+          placeholder={copy.pairRelayUrlPlaceholder}
+          style={{ marginTop: spacing.xs2 }}
+          value={pairRelayUrl}
         />
         {pairing ? <ActivityIndicator color={colors.textFaint} style={{ marginTop: spacing.sm }} /> : null}
         {pairError !== null ? <Text style={{ color: colors.destructive, fontSize: 12, marginTop: spacing.sm }}>{pairError}</Text> : null}
@@ -234,9 +252,16 @@ export default function DevicesRoute() {
           onPayload={(payload) => {
             setQrScanning(false);
             try {
-              const parsed = JSON.parse(payload) as { relayUrl?: string; pairingId?: string; installationId?: string; gatewayEphemeralPub?: string; gatewayKeyFingerprint?: string; pairingTicket?: string };
-              if (typeof parsed.relayUrl === 'string' && typeof parsed.pairingId === 'string' && typeof parsed.installationId === 'string' && parsed.installationId.length > 0 && typeof parsed.gatewayKeyFingerprint === 'string') {
-                void pairWithTicket(parsed.relayUrl, parsed.pairingId, parsed.installationId, parsed.pairingTicket ?? '', typeof parsed.gatewayEphemeralPub === 'string' ? parsed.gatewayEphemeralPub : undefined, undefined, parsed.gatewayKeyFingerprint);
+              const parsed = JSON.parse(payload) as { relayUrl?: string; pairingId?: string; installationId?: string; gwEphemeralPub?: string; gatewayKeyFingerprint?: string; pairingTicket?: string };
+              const gatewayEphemeralPub = parsed.gwEphemeralPub;
+              if (typeof parsed.relayUrl === 'string' && typeof parsed.pairingId === 'string' && typeof parsed.installationId === 'string' && parsed.installationId.length > 0 && typeof parsed.gatewayKeyFingerprint === 'string' && typeof gatewayEphemeralPub === 'string') {
+                // 空 ticket 必然撞 /pairing 握手 401（relay 只认 pairing kind 的 token，
+                // 手机端无法自造）——在此拦下并指向二维码路径，不让用户等一个必然失败的连接。
+                if (typeof parsed.pairingTicket !== 'string' || parsed.pairingTicket.length === 0) {
+                  setPairError(copy.pairNoTicket);
+                  return;
+                }
+                void pairWithTicket(parsed.relayUrl, parsed.pairingId, parsed.installationId, parsed.pairingTicket, gatewayEphemeralPub, undefined, parsed.gatewayKeyFingerprint);
                 return;
               }
               setPairError(copy.pairQrMissingFields);
@@ -253,7 +278,7 @@ export default function DevicesRoute() {
             连接经自建 relay 中继（非局域网也可用），全程端到端加密——relay 只见路由信息。断线不影响桌面端会话。
           </Text>
         </View>
-      </ScrollView>
+      </KeyboardScrollScreen>
     </View>
   );
 }
