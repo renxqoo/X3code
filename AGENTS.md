@@ -136,10 +136,17 @@ bun run ci        # lint → typecheck → build → test
 1. **起Metro**：`cd apps/mobile && bun run web --port 8099`（后台常驻）；`curl localhost:8099` 期望 200。
 2. **建会话**：`bw s create --url http://localhost:8099 --backend chrome --allow-eval --allow-private-network`——`--allow-private-network` 必需，否则 `POLICY_BLOCKED`。
 3. **状态不可预置**：web 形态长期钥只走 sessionStorage、原生走 SecureStore（`credentials.ts`），**重启即失**。每次走查必须从「未配对」起点走完整配对流程，不得预置数据直接测功能。
-4. **断言走 extract 不走 eval**：本环境 RN Web 页面的 `eval` 返回值不可用（恒 `{}`），`extract_code` 沙箱亦无 `document`；用 `snap`/`extract`。
-4b. **`type` 不触发 RN Web 的 `onChangeText`**：文本写进了 textarea 的 DOM 值，但 React 状态不变（表现为「按钮不出现」「发送无反应」）。这是走查装置的局限、不是产品缺陷——**断言草稿相关的行为前，先确认 store 里 draft 非空**，否则会把装置问题误判成产品 bug（实测已踩：据此一度怀疑发送链路断裂）。同族：发送按钮的 `clicktext` 撞敏感词返回 `CONFIRMATION_REQUIRED`。
-5. **必跑的四条journey**（各自对应一类已修缺陷，详见 `/tmp/mobile-bw-walkthrough.md`）：配对发现（失败文案非空）、发送失败可见性（文案逐字可读不截断）、**从搜索/归档页打开会话后发消息**（回复必须落在当前会话）、断线自动恢复（无需手动重连）。
-6. **收尾**：`bw s close`；装置与数据留/tmp，不入库。
+4. **`eval` 收表达式，不收箭头函数**：`eval "() => {...}"` 会被当对象序列化并返回 `{}`（看起来「不可用」，实为用法错）；`eval "document.title='X'"` 或 `eval "(() => {...})()"` 才真正执行且返回真实值。断言优先用 `extract`/`snap`，需要读运行时值时用 `eval` 的表达式写法。
+5. **输入草稿必须走 eval 注入，`type` 无效**：`type` 只写 DOM 值、不触发 RN Web 的 `onChangeText`，store 里的 draft 恒为 0（按钮出现是聚焦态，与 draft 无关——别被它骗了）。注入写法：
+   ```
+   eval "(() => { const ta=document.querySelector('textarea');
+   const s=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;
+   s.call(ta,'草稿文本'); ta.dispatchEvent(new Event('input',{bubbles:true})); })()"
+   ```
+   判据：页面重渲后「发送」按钮出现**不等于**草稿已进 store；装置自带的诊断值才是 ground truth。
+6. **索引随每个动作重排**：每个动作的响应自带新快照，从那里取下一个索引；不要凭上一次的快照点击（会 `ELEMENT_NOT_FOUND`）。RN Web 的 `Pressable` 用 `click` 即可触发。
+7. **必跑的四条 journey**（各自对应一类已修缺陷，详见 `/tmp/mobile-bw-walkthrough.md`）：配对发现（失败文案非空）、发送失败可见性（文案逐字可读不截断）、**从搜索/归档页打开会话后发消息**（回复必须落在当前会话）、断线自动恢复（无需手动重连）。
+8. **收尾**：`bw s close`；装置与数据留 /tmp，不入库。
 
 ## 提交与交付规范
 
