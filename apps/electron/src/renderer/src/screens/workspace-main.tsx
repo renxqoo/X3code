@@ -116,6 +116,7 @@ function WorkspaceMain(): React.JSX.Element {
       onSearch: toggleCommandPanel,
       onToggleDiff: () => uiStore.getState().toggleDiffPane(),
       onToggleAgents: () => uiStore.getState().toggleAgentsPane(),
+      onToggleBrowser: () => uiStore.getState().toggleBrowserPane(),
     },
     hotkeysEnabled,
     panelHotkeyEnabled,

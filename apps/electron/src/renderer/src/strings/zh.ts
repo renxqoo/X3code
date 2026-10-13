@@ -89,6 +89,7 @@ export const zh: typeof en = {
       newTask: '新建任务',
       openDiff: '打开 Diff 面板',
       openAgents: '打开子代理面板',
+    openBrowser: '打开浏览器面板',
       openFinder: '在访达中打开',
       openTerminal: '在终端中打开',
       openEditor: '在编辑器中打开',

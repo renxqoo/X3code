@@ -88,6 +88,7 @@ export const en = {
       newTask: 'New task',
       openDiff: 'Open Diff panel',
       openAgents: 'Open agents panel',
+      openBrowser: 'Open browser panel',
       openFinder: 'Open in Finder',
       openTerminal: 'Open in Terminal',
       openEditor: 'Open in editor',
