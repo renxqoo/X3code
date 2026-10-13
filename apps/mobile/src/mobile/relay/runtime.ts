@@ -19,6 +19,7 @@ import { createSessionSync } from '../state/session-sync';
 import { setSessionSync } from '../state/session-align';
 import { noteThreadPaths } from './thread-paths';
 import { classifyRelayFailure } from './relay-reachability';
+import { normalizeSessionRows } from './session-rows';
 import { bindLocalHistorySink } from '../state/local-history-changes';
 import {
   activeThreadIdOf, bindRuntimeSource, reconcileThread, sessionSyncRefOf, setSessionSyncRef,
@@ -414,8 +415,11 @@ export function loadBootstrap(client: Client): Promise<void> {
       const savedOut = results[1];
       if (threadsOut === undefined || !threadsOut.ok) return;
       const sessionsData = (threadsOut.data ?? {}) as { sessions?: unknown };
-      const live = Array.isArray(sessionsData.sessions) ? (sessionsData.sessions as Array<Record<string, unknown>>) : [];
-      const saved = savedOut?.ok === true && Array.isArray(savedOut.data) ? (savedOut.data as Array<Record<string, unknown>>) : [];
+      const live = normalizeSessionRows(sessionsData.sessions);
+      // live/saved 同一套形状归一（host 的包装不一致：有的包一层、有的不包）。
+      // saved 侧曾只认裸数组，包装形态下整体落空——而 cwd 守卫的候选正来自这两侧合并，
+      // 列表空 = 手机端永远发不出第一条消息。
+      const saved = normalizeSessionRows(savedOut?.ok === true ? savedOut.data : null);
       // 归档行也记路径：不在宿主表的会话靠它唤活（thread/resume 按路径投递）
       noteThreadPaths(live);
       noteThreadPaths(saved);
