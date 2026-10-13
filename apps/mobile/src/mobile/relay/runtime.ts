@@ -413,8 +413,7 @@ export function loadBootstrap(client: Client): Promise<void> {
       ])) as unknown as Array<{ ok: boolean; data?: unknown }>;
       const threadsOut = results[0];
       const savedOut = results[1];
-      if (threadsOut === undefined || !threadsOut.ok) return;
-      const sessionsData = (threadsOut.data ?? {}) as { sessions?: unknown };
+      const sessionsData = (threadsOut?.data ?? {}) as { sessions?: unknown };
       const live = normalizeSessionRows(sessionsData.sessions);
       // live/saved 同一套形状归一（host 的包装不一致：有的包一层、有的不包）。
       // saved 侧曾只认裸数组，包装形态下整体落空——而 cwd 守卫的候选正来自这两侧合并，

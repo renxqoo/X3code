@@ -113,7 +113,12 @@ describe('症状「手机端打开 PC 侧会话发不出消息」：parked 唤�
     table: Array<{ threadId: string; sessionPath: string | null; state: string }>;
     entriesOf: (threadId: string) => Array<Record<string, unknown>>;
     resumeTo?: string | null;
+    /** listSaved 的应答（默认空列表——多数装置只关心 live 面）。 */
+    savedOf?: () => Promise<{ ok: boolean; data?: unknown; error?: { kind: string; message: string } }>;
+    /** live 面是否失败（默认成功）。 */
+    liveFails?: boolean;
   }) {
+    const savedOf = spec.savedOf ?? (() => Promise.resolve({ ok: true, data: [] as unknown[] }));
     const commands: Array<{ command: string; args: Record<string, unknown> }> = [];
     const resumed = new Set<string>();
     const client = {
@@ -124,7 +129,11 @@ describe('症状「手机端打开 PC 侧会话发不出消息」：parked 唤�
         const ok = (data: unknown) => Promise.resolve({ ok: true, data });
         const fail = (message: string) => Promise.resolve({ ok: false, error: { kind: 'transient', message } });
         if (method === 'session/liveThreads') {
+          if (spec.liveFails === true) return fail('live_unavailable');
           return ok({ sessions: spec.table.map((row) => ({ threadId: row.threadId, cwd: '/w', state: row.state, streaming: false, sessionPath: row.sessionPath })) });
+        }
+        if (method === 'session/listSaved') {
+          return savedOf();
         }
         if (method === 'session/entries') {
           const threadId = args['threadId'] as string;
@@ -158,6 +167,50 @@ describe('症状「手机端打开 PC 侧会话发不出消息」：parked 唤�
       swap.client = original;
     }
   }
+
+  /**
+   * 症状回归：手机端工作空间候选恒空 → cwd 守卫永不满足 → 发消息恒被拒
+   * （「先选择电脑端已有的工作空间」），而电脑端明明有上千个会话。
+   *
+   * 根因：loadBootstrap 以 live 面成败作为整体早退条件，live 一失败就连坐丢弃 saved 面
+   * ——而绝大多数会话（已归档落盘的）只在 saved 侧。任一侧失败都不能废掉另一侧。
+   */
+  it('live 面失败不连坐 saved 侧（症状：工作空间候选恒空）', async () => {
+    const savedRow = { id: 's-1', sessionPath: '/s/s-1.jsonl', cwd: '/work/proj', title: '归档会话', messageCount: 2 };
+    const host = hostStub({
+      table: [],
+      entriesOf: () => [],
+      // live 面失败（如服务端旧版不识别 includePreview 而报错）
+      liveFails: true,
+      savedOf: () => Promise.resolve({ ok: true, data: { sessions: [savedRow] } }),
+    });
+    await withHost(host, async () => {
+      await loadBootstrap(host.client);
+    });
+    const sessions = historyStoreModule.useHistoryStore.getState().sessions;
+    expect(sessions.some((row) => row.project === '/work/proj')).toBe(true);
+  });
+
+  it('live 与 saved 都失败时降级为空列表（不抛、不留半份数据）', async () => {
+    const host = hostStub({
+      table: [],
+      entriesOf: () => [],
+      savedOf: () => Promise.resolve({ ok: false, error: { kind: 'transient', message: 'nope' } }),
+    });
+    await withHost(host, async () => {
+      await loadBootstrap(host.client);
+    });
+    expect(historyStoreModule.useHistoryStore.getState().sessions).toEqual([]);
+  });
+
+  it('saved 侧两种包装都识别（裸数组与 {sessions:[...]}）', async () => {
+    for (const data of [[{ id: 's-1', sessionPath: '/s/s.jsonl', cwd: '/w/bare' }], { sessions: [{ id: 's-2', sessionPath: '/s/w.jsonl', cwd: '/w/wrapped' }] }]) {
+      const host = hostStub({ table: [], entriesOf: () => [], savedOf: () => Promise.resolve({ ok: true, data }) });
+      await withHost(host, async () => { await loadBootstrap(host.client); });
+      const projects = historyStoreModule.useHistoryStore.getState().sessions.map((row) => row.project);
+      expect(projects.some((p) => p === '/w/bare' || p === '/w/wrapped')).toBe(true);
+    }
+  });
 
   it('表内有占位（parked）→ 沿用原 threadId，不发 resume', async () => {
     const host = hostStub({ table: [{ threadId: 't-parked', sessionPath: '/s/p.jsonl', state: 'parked' }], entriesOf: () => [{ id: 'u-1', kind: 'user', text: '历史', createdAt: '2026-01-01T00:00:00.000Z' }] });

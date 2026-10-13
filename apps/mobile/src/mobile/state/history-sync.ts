@@ -31,6 +31,8 @@ interface SessionLike {
 interface SavedLike {
   sessionPath?: string;
   sessionId?: string;
+  /** host saved 行的主键名（saved-query 用 id；sessionId 是设备映射后的别名）。 */
+  id?: string;
   title?: string;
   cwd?: string;
   lastActivityAt?: number;
@@ -120,11 +122,11 @@ export function createHistorySync(callbacks: HistorySyncCallbacks) {
         sessions.set(id, toConversationSession(raw, pinned, archived));
       }
       // saved（已落盘不在册会话）并入去重（live 优先）。不在册但带 sessionPath 的
-      // 会话可按路径唤活（thread/resume），故仍可用；只有连路径都没有（归档不可读）
-      // 才标 detached——UI 显式告知，不假装可用。
       const liveIds = new Set([...sessions.keys()].values());
       for (const item of saved) {
-        const sid = item.sessionId ?? '';
+        // 主键别名：host saved 行用 id（saved-query），设备映射用 sessionId；
+        // 归一层不重塑字段，两种形态都可能出现——只认一种会让整个 saved 侧静默丢弃。
+        const sid = item.sessionId ?? item.id ?? '';
         if (sid.length === 0 || liveIds.has(sid)) continue;
         const archived = item.sessionPath !== undefined && archivedPaths.has(item.sessionPath);
         const row: SessionLike = { threadId: sid, state: 'parked' };
