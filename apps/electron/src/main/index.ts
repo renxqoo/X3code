@@ -15,7 +15,7 @@ import { createAgentDefinitionsStore } from './agent-definitions-store';
 import { createFileLogger, createFileSettings } from './file-settings';
 import { packagedGatewayEntry, packagedHubCandidates, resolveGatewayEntry, resolveHubPaths } from './hub-paths';
 import { writeGatewayConfig } from './gateway-config';
-import { resolveAppPaths, resolveUserDataDir } from './paths';
+import { resolveAppPaths, resolveDataDir, resolveUserDataDir } from './paths';
 import { createPaiRuntime } from './x3code-runtime';
 import { staleGateway, startGatewayProcess, type GatewayProcess } from './gateway-process';
 import { createProviderKeyStore } from './provider-key-store';
@@ -26,9 +26,12 @@ import { writeDiagnosticsBundle } from './export-diagnostics';
 // 开启 Web 内容可访问性树（辅助技术 + 自动化验证都依赖它）
 app.commandLine.appendSwitch('force-renderer-accessibility');
 
-// 数据根缺省 ~/.pai（X3CODE_USER_DATA_DIR 覆盖用于 worktree 并行隔离）；必须在
-// 单实例锁之前重定向——锁文件随 userData 走，重定向即获得独立锁与数据区
-app.setPath('userData', resolveUserDataDir(process.env, app.getPath('home')));
+// 两根分离：Chromium userData 留在平台标准位置（macOS 下 ~/Library/Application
+// Support/<应用名>），只承载内核产物；业务数据与 Agent 内核数据固定落在 ~/.pai。
+// 重定向必须在单实例锁之前——锁文件随 userData 走，X3CODE_USER_DATA_DIR 同时覆盖
+// 两根，让 worktree 并行实例连同锁一起获得独立数据区。
+const dataDir = resolveDataDir(process.env, app.getPath('home'));
+app.setPath('userData', resolveUserDataDir(process.env, app.getPath('userData')));
 
 // 单实例锁：双开会在 sqlite 注册表与 host 进程上互相踩踏，第二实例聚焦首实例后退出
 if (!app.requestSingleInstanceLock()) {
@@ -47,7 +50,7 @@ if (!app.requestSingleInstanceLock()) {
 });
 
 void app.whenReady().then(async () => {
-  const paths = resolveAppPaths(app.getPath('userData'));
+  const paths = resolveAppPaths(app.getPath('userData'), dataDir);
   const logger = createFileLogger(paths.logFile);
 
   // 开发态 dock 用仓库内图标（打包态由 electron-builder 的 mac.icon 写入 .app 束）
