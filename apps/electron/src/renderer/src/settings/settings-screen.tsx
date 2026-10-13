@@ -4,6 +4,7 @@ import { RuntimeContent } from '@/screens/runtime-content';
 import type { SettingsScreenProps } from './use-settings-screen';
 import { AgentsSection } from './agents-section';
 import { GeneralSection } from './general-section';
+import { BrowserSection } from './browser-section';
 import { DevicesSection } from './devices-section';
 import { HistorySection } from './history-section';
 import { PermissionsSection } from './permissions-section';
@@ -18,7 +19,7 @@ import { PluginsSection } from './plugins-section';
  * 分区状态/派发与数据装配都在 use-settings-screen，本组件只做展示分派。
  * Esc 关闭由父层全局监听，本组件不挂键盘事件。
  */
-function SettingsScreen({ open, onClose, section, onSelectSection, general, devices, providers, permissions, agents, skills, plugins, history, runtime, runtimeAttention }: SettingsScreenProps) {
+function SettingsScreen({ open, onClose, section, onSelectSection, general, devices, browser, providers, permissions, agents, skills, plugins, history, runtime, runtimeAttention }: SettingsScreenProps) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-40 flex bg-background">
@@ -33,6 +34,8 @@ function SettingsScreen({ open, onClose, section, onSelectSection, general, devi
             <ProvidersSection {...providers} />
           ) : section === 'devices' ? (
             <DevicesSection {...devices} />
+          ) : section === 'browser' ? (
+            <BrowserSection {...browser} />
           ) : section === 'permissions' ? (
             <PermissionsSection {...permissions} />
           ) : section === 'agents' ? (

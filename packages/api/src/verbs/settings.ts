@@ -74,6 +74,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps) {
       archivedSessions: [...settings.archivedSessions],
       idleRecycleMinutes: settings.idleRecycleMinutes,
       relay: { ...settings.relay },
+      browserAutoOpenPanel: settings.browserAutoOpenPanel,
+      browserExternalLinkTarget: settings.browserExternalLinkTarget,
+      browserLocalLinkTarget: settings.browserLocalLinkTarget,
     };
   };
 
@@ -183,6 +186,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps) {
       if (params.projectModels !== undefined) patch.projectModels = { ...params.projectModels };
       if (params.pinnedSessions !== undefined) patch.pinnedSessions = [...params.pinnedSessions];
       if (params.trustedDefault !== undefined) patch.trustedDefault = params.trustedDefault;
+      if (params.browserAutoOpenPanel !== undefined) patch.browserAutoOpenPanel = params.browserAutoOpenPanel;
+      if (params.browserExternalLinkTarget !== undefined) patch.browserExternalLinkTarget = params.browserExternalLinkTarget;
+      if (params.browserLocalLinkTarget !== undefined) patch.browserLocalLinkTarget = params.browserLocalLinkTarget;
       if (params.hiddenProjects !== undefined) patch.hiddenProjects = [...params.hiddenProjects];
       if (params.archivedSessions !== undefined) patch.archivedSessions = [...params.archivedSessions];
       // relay 变更须重启网关：gateway.json 只在网关启动期读入，不重启即拿旧 relay 形态配对

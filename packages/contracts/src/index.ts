@@ -23,3 +23,4 @@ export * from './hub-events';
 export * from './text-clip';
 export * from './comment-line';
 export * from './usage';
+export * from './browser-api';

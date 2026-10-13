@@ -10,6 +10,7 @@ export const SETTINGS_ALL_SECTIONS = [
   'general',
   'providers',
   'devices',
+  'browser',
   'permissions',
   'agents',
   'skills',
@@ -40,7 +41,7 @@ export type SettingsNavGroup = {
 
 /** 左侧导航分组（顺序即展示顺序）。 */
 export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
-  { id: 'basics', sections: ['general', 'providers', 'devices'] },
+  { id: 'basics', sections: ['general', 'providers', 'devices', 'browser'] },
   { id: 'agent', sections: ['permissions', 'agents', 'skills', 'plugins'] },
   { id: 'data', sections: ['history', 'runtime'] },
 ];
