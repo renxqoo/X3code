@@ -48,9 +48,6 @@ test('patch 部分写：只动目标字段，其余保留；落盘可再读', ()
     idleRecycleMinutes: 5,
     archivedSessions: [],
     relay: { remoteEnabled: true, relayUrl: '', relayKeyFingerprint: '' },
-    browserAutoOpenPanel: true,
-    browserExternalLinkTarget: 'builtin',
-    browserLocalLinkTarget: 'builtin',
   });
 
   // 新实例从盘读回（缓存不背书）

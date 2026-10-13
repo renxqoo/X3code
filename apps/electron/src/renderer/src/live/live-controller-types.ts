@@ -5,7 +5,6 @@ import type {
   ImagePayload,
   PluginCandidateView,
   PluginProposalRow,
-  BrowserLinkTarget,
   PreferencesView,
   ProviderModel,
   RelayConfig,
@@ -148,7 +147,7 @@ export interface LiveController {
   readonly upsertProvider: (input: { name: string; baseUrl: string; api: string; models: ProviderModel[]; apiKey?: string }) => Promise<string | null>;
   readonly removeProvider: (name: string) => Promise<string | null>;
   /** 应用偏好部分写（返回写后视图；失败返回 null，原因走通知条）。 */
-  readonly updatePreferences: (patch: { defaultModel?: string | null; onboarded?: boolean; projectModels?: Record<string, string>; pinnedSessions?: string[]; trustedDefault?: boolean; hiddenProjects?: string[]; archivedSessions?: string[]; relay?: RelayConfig; hubDev?: { bunPath: string | null; hubEntry: string | null }; browserAutoOpenPanel?: boolean; browserExternalLinkTarget?: BrowserLinkTarget; browserLocalLinkTarget?: BrowserLinkTarget }) => Promise<PreferencesView | null>;
+  readonly updatePreferences: (patch: { defaultModel?: string | null; onboarded?: boolean; projectModels?: Record<string, string>; pinnedSessions?: string[]; trustedDefault?: boolean; hiddenProjects?: string[]; archivedSessions?: string[]; relay?: RelayConfig; hubDev?: { bunPath: string | null; hubEntry: string | null } }) => Promise<PreferencesView | null>;
   /** provider 连接探活（主进程直发；结果原样透传给调用方做内联展示）。 */
   readonly testProvider: (name: string, modelId: string | undefined) => Promise<{ ok: true; latencyMs: number } | { ok: false; reason: string }>;
   /** 直执行 bash（`!` 前缀）：成功返回 null；权威条目经对账进入对话流。 */

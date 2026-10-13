@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import type { BrowserLinkTarget, AgentDefinition, IdleRecycleMinutes, PluginCandidateView, PluginProposalRow, PluginView, ProviderConfigView, ProviderModel, RelayConfig, SkillCandidateView, SkillView, ThinkingLevel } from '@x3code/contracts';
+import type { AgentDefinition, IdleRecycleMinutes, PluginCandidateView, PluginProposalRow, PluginView, ProviderConfigView, ProviderModel, RelayConfig, SkillCandidateView, SkillView, ThinkingLevel } from '@x3code/contracts';
 import type { HubSettingsView } from '@/live/store';
 import type { PluginImportRequest, PluginImportSummary, SkillImportRequest, SkillImportSummary } from '@/live/live-controller-types';
 import { AGENT_TOOL_IDS } from '@x3code/contracts';
@@ -65,16 +65,6 @@ export type SettingsScreenProps = {
     /** relay 配置（全局统一：settings.json 唯一真相）与保存出口。 */
     relay: RelayConfig;
     onRelaySave: (relay: RelayConfig) => Promise<boolean>;
-  };
-  browser: {
-    autoOpenPanel: boolean;
-    externalLinkTarget: BrowserLinkTarget;
-    localLinkTarget: BrowserLinkTarget;
-    onAutoOpenPanelChange: (next: boolean) => void;
-    onExternalLinkTargetChange: (next: BrowserLinkTarget) => void;
-    onLocalLinkTargetChange: (next: BrowserLinkTarget) => void;
-    onImportCookies: () => void;
-    onClearData: () => void;
   };
   providers: {
     list: readonly ProviderConfigView[];
@@ -246,23 +236,6 @@ export function useSettingsScreen({ open, onClose, initialSection }: UseSettings
     devices: {
       relay: preferences.relay,
       onRelaySave: actions.saveRelay,
-    },
-    browser: {
-      autoOpenPanel: preferences.browserAutoOpenPanel,
-      externalLinkTarget: preferences.browserExternalLinkTarget,
-      localLinkTarget: preferences.browserLocalLinkTarget,
-      onAutoOpenPanelChange: (next) => {
-        void actions.saveGeneralPreferences({ browserAutoOpenPanel: next });
-      },
-      onExternalLinkTargetChange: (next) => {
-        void actions.saveGeneralPreferences({ browserExternalLinkTarget: next });
-      },
-      onLocalLinkTargetChange: (next) => {
-        void actions.saveGeneralPreferences({ browserLocalLinkTarget: next });
-      },
-      // 浏览器数据操作接主进程 M4 装置（bw auth / profile 清理）；当前先行占位
-      onImportCookies: () => undefined,
-      onClearData: () => undefined,
     },
     providers: {
       list: providers,

@@ -82,10 +82,6 @@ export type RelayConfig = z.infer<typeof RelayConfigSchema>;
 /** 未配置 relay 的空形态（单一真相：schema 缺省与降级共用一份）。 */
 export const EMPTY_RELAY_CONFIG: RelayConfig = { remoteEnabled: true, relayUrl: "", relayKeyFingerprint: "" };
 
-/** 浏览器面板：链接打开位置词表（内置浏览器 / 系统浏览器）。 */
-export const BrowserLinkTargetSchema = z.union([z.literal('builtin'), z.literal('system')]);
-export type BrowserLinkTarget = z.infer<typeof BrowserLinkTargetSchema>;
-
 /**
  * gateway.json 序列化（x-harness gateway 读口形状；本仓零自创键）。
  * 键序固定 + 末尾换行：同输入同输出，重生成不产生伪 diff（避免无谓重启）。
@@ -133,12 +129,6 @@ export const SettingsSchema = z
     idleRecycleMinutes: IdleRecycleMinutesSchema.default(5),
     /** relay 接入配置（全局统一；gateway.json 由 serializeGatewayConfig 派生）。 */
     relay: RelayConfigSchema.default(EMPTY_RELAY_CONFIG),
-    /** 浏览器面板（T61）：Agent 操作网页时自动打开面板。 */
-    browserAutoOpenPanel: z.boolean().default(true),
-    /** 公开网页链接的默认打开位置（内置浏览器 / 系统浏览器）。 */
-    browserExternalLinkTarget: BrowserLinkTargetSchema.default('builtin'),
-    /** 本地开发页面链接的默认打开位置。 */
-    browserLocalLinkTarget: BrowserLinkTargetSchema.default('builtin'),
   })
   .strict();
 

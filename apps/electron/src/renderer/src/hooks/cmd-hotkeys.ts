@@ -1,15 +1,14 @@
 import * as React from 'react';
 
-export type CmdHotkeyAction = 'newThread' | 'search' | 'toggleDiff' | 'toggleAgents' | 'toggleBrowser';
+export type CmdHotkeyAction = 'newThread' | 'search' | 'toggleDiff' | 'toggleAgents';
 
-/** ⌘N/⌘K/⌘⇧D/⌘⇧A/⌘⇧B 命中判定：macOS ⌘、其余平台 Ctrl；Alt 组合不劫持（留给系统）。 */
+/** ⌘N/⌘K/⌘⇧D/⌘⇧A 命中判定：macOS ⌘、其余平台 Ctrl；Alt 组合不劫持（留给系统）。 */
 export function resolveCmdHotkey(mod: { meta: boolean; ctrl: boolean; alt: boolean; shift: boolean }, key: string): CmdHotkeyAction | null {
   if (!(mod.meta || mod.ctrl) || mod.alt) return null;
   const lower = key.toLowerCase();
   // shift 组合单独分派（面板开关）；⌘D/⌘A 裸组合不劫持（编辑器/系统语义）
   if (mod.shift) {
     if (lower === 'd') return 'toggleDiff';
-    if (lower === 'b') return 'toggleBrowser';
     if (lower === 'a') return 'toggleAgents';
     return null;
   }
@@ -27,8 +26,6 @@ type CmdHotkeysHandlers = {
   onToggleDiff: () => void;
   /** ⌘⇧A/Ctrl+Shift+A：切换子代理面板。 */
   onToggleAgents: () => void;
-  /** ⌘⇧B/Ctrl+Shift+B：切换浏览器面板。 */
-  onToggleBrowser?: () => void;
 };
 
 /**
@@ -40,7 +37,7 @@ type CmdHotkeysHandlers = {
  * 回调需引用稳定（本 hook 不做最新值中转）。
  */
 export function useCmdHotkeys(handlers: CmdHotkeysHandlers, enabled: boolean, panelHotkeyEnabled: boolean): void {
-  const { onNewThread, onSearch, onToggleDiff, onToggleAgents, onToggleBrowser } = handlers;
+  const { onNewThread, onSearch, onToggleDiff, onToggleAgents } = handlers;
   React.useEffect(() => {
     if (!enabled && !panelHotkeyEnabled) return;
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -56,7 +53,6 @@ export function useCmdHotkeys(handlers: CmdHotkeysHandlers, enabled: boolean, pa
       event.preventDefault();
       if (action === 'newThread') onNewThread();
       else if (action === 'toggleDiff') onToggleDiff();
-      else if (action === 'toggleBrowser') onToggleBrowser?.();
       else if (action === 'toggleAgents') onToggleAgents();
     };
     window.addEventListener('keydown', onKeyDown);

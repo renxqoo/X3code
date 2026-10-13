@@ -11,12 +11,6 @@ const bridge = {
     ipcRenderer.on('x3code:event', listener);
     return () => ipcRenderer.removeListener('x3code:event', listener);
   },
-  /** 浏览器面板独立事件面（T61）：大 payload 帧与流式事件通道隔离，防拖慢会话渲染。 */
-  subscribeBrowser(onEvent: (e: unknown) => void): () => void {
-    const listener = (_e: unknown, ev: unknown): void => onEvent(ev);
-    ipcRenderer.on('x3code:browser-event', listener);
-    return () => ipcRenderer.removeListener('x3code:browser-event', listener);
-  },
   window: {
     minimize(): Promise<void> {
       return ipcRenderer.invoke('x3code:window-minimize');

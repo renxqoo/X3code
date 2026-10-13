@@ -16,19 +16,6 @@ import {
 import { createFileRead, type FileRead } from './file-read';
 import { searchProjectFiles } from './file-search';
 import { runGit } from './git-exec';
-import { createBrowserRoutes } from './browser-host/browser-routes';
-import type { createBrowserHost } from './browser-host/browser-host';
-
-/** 未接线装配（测试）用的 fail-closed 宿主：所有操作返回 browser_unavailable。 */
-const failClosedBrowserHost: ReturnType<typeof createBrowserHost> = {
-  ensureStarted: () => Promise.resolve(undefined),
-  currentClient: () => null,
-  currentPhase: () => 'failed',
-  currentPort: () => 0,
-  stop: () => undefined,
-  confirmGate: () => Promise.resolve(false),
-  debugForTarget: () => Promise.resolve(null),
-};
 import { createOpenLocation, type OpenLocation } from './open-location';
 import { writeModelsConfig } from './models-config';
 import { createLocalRoutes } from '@x3code/api';
@@ -117,8 +104,6 @@ export interface ApiRouteDeps {
   fileRead?: FileRead;
   /** 额外放行的工作目录（本次运行中经系统选择器选过的目录）。 */
   extraCwds?: () => readonly string[];
-  /** 浏览器面板宿主（T61；未接线时 browser/* 全部 fail-closed browser_unavailable）。 */
-  browserHost?: ReturnType<typeof createBrowserHost>;
 }
 
 type Outcome<M extends ApiMethod> = Promise<ApiOutcome<M>>;
@@ -310,11 +295,9 @@ export function createApiRoutes(deps: ApiRouteDeps) {
     void routes['session/state']?.({ threadId }).catch(() => undefined);
   };
 
-  const browserRoutes = createBrowserRoutes({ host: deps.browserHost ?? failClosedBrowserHost });
   const routes: RouteTable = {
     ...localRoutes,
     ...settings.routes,
-    ...browserRoutes.routes,
     ...skillRoutes,
     ...pluginRoutes,
     ...threadOpsRoutes({

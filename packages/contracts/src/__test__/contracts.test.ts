@@ -124,6 +124,42 @@ describe('词表封闭（双向）', () => {
   });
 });
 
+describe('Settings zod：round-trip 与拒绝表', () => {
+  test('空输入落到默认值', () => {
+    const s = SettingsSchema.parse({});
+    expect(s.providers).toEqual([]);
+    expect(s.trustedDefault).toBe(false);
+    expect(s.hubDev).toEqual({ bunPath: null, hubEntry: null, gatewayEntry: null });
+    expect(s.defaultModel).toBeNull();
+    expect(s.onboarded).toBe(false);
+    expect(s.relay).toEqual({ remoteEnabled: true, relayUrl: '', relayKeyFingerprint: '' });
+  });
+
+  test('全量字段 round-trip', () => {
+    const input = {
+      hubDev: { bunPath: '/usr/local/bin/bun', hubEntry: '/Users/x/my-agent/packages/host-hub/src/host/cli.ts', gatewayEntry: null },
+      providers: [{ name: 'glm', baseUrl: 'https://api.example.com', api: 'openai', models: [{ id: 'glm-5.3', reasoning: true, vision: true }]}],
+      trustedDefault: true,
+      defaultModel: 'glm/glm-5.3',
+      onboarded: true,
+      projectModels: { '/w': 'glm/glm-5.3' },
+      pinnedSessions: ['/a.jsonl'],
+      hiddenProjects: ['/w/gone'],
+      idleRecycleMinutes: 15,
+      archivedSessions: ['/b.jsonl'],
+      relay: { remoteEnabled: false, relayUrl: 'wss://relay.example.com', relayKeyFingerprint: 'fp-1' },
+    };
+    expect(SettingsSchema.parse(input)).toEqual(input);
+  });
+
+  test.each([
+    ['未知键', { extra: 1 } as Record<string, unknown>],
+    ['provider 空 models', { providers: [{ name: 'p', baseUrl: 'u', api: 'openai', models: [] }] }],
+    ['provider 缺 baseUrl', { providers: [{ name: 'p', api: 'openai', models: ['m'] }] }],
+  ])('拒绝：%s', (_name, bad) => {
+    expect(() => SettingsSchema.parse(bad)).toThrow();
+  });
+});
 
 describe('SessionView / HistoryItem schema', () => {
   test('SessionView 合法样本 round-trip', () => {
@@ -206,9 +242,6 @@ describe('API schema：每方法合法/非法样本', () => {
       idleRecycleMinutes: 5,
       archivedSessions: [],
       relay: { remoteEnabled: true, relayUrl: 'wss://relay.example.com', relayKeyFingerprint: 'fp-1' },
-      browserAutoOpenPanel: true,
-      browserExternalLinkTarget: 'builtin',
-      browserLocalLinkTarget: 'builtin',
     };
     expect(PreferencesViewSchema.parse(view)).toEqual(view);
     const { relay: _omit, ...withoutRelay } = view;

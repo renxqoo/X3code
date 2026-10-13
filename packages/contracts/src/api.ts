@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import { GitApiSchemas } from './git-api';
-import { BrowserApiSchemas } from './browser-api';
 
 import type { ApiError } from './hub-errors';
+import { } from './git-views';
 import { PermModeSchema } from './permissions';
 import { RuntimeSnapshotViewSchema } from './runtime';
 import { InflightViewSchema, PendingDialogViewSchema, SubagentSnapshotViewSchema } from './inflight-views';
 import { DiffFileViewSchema, EditHunkViewSchema, SessionViewSchema, SubagentSpawnViewSchema, imagePayload } from './ui-events';
 import { UsageSchema } from './usage';
-import { BrowserLinkTargetSchema, IdleRecycleMinutesSchema, ProviderModelSchema, RelayConfigSchema } from './settings';
+import { IdleRecycleMinutesSchema, ProviderModelSchema, RelayConfigSchema } from './settings';
 import { TodoSnapshotEventDataSchema } from './todo-views';
 import { THINKING_LEVEL_ORDER } from './thinking-levels';
 import {
@@ -167,12 +167,6 @@ export const PreferencesViewSchema = z.object({
   archivedSessions: z.array(z.string()),
   /** relay 接入配置（全局统一：settings.json 唯一真相，gateway.json 由其派生）。 */
   relay: RelayConfigSchema,
-  /** 浏览器面板（T61）：Agent 操作网页时自动打开面板。 */
-  browserAutoOpenPanel: z.boolean(),
-  /** 公开网页链接的默认打开位置。 */
-  browserExternalLinkTarget: BrowserLinkTargetSchema,
-  /** 本地开发页面链接的默认打开位置。 */
-  browserLocalLinkTarget: BrowserLinkTargetSchema,
 });
 export type PreferencesView = z.infer<typeof PreferencesViewSchema>;
 
@@ -202,7 +196,6 @@ import { PluginMethodsSchema } from './plugin-views';
 
 export const ApiSchemas = {
   ...GitApiSchemas,
-  ...BrowserApiSchemas,
   ...PluginMethodsSchema,
   'app/bootstrap': {
     params: empty,
@@ -561,9 +554,6 @@ export const ApiSchemas = {
         projectModels: z.record(z.string(), z.string()).optional(),
         pinnedSessions: z.array(z.string()).optional(),
         trustedDefault: z.boolean().optional(),
-        browserAutoOpenPanel: z.boolean().optional(),
-        browserExternalLinkTarget: BrowserLinkTargetSchema.optional(),
-        browserLocalLinkTarget: BrowserLinkTargetSchema.optional(),
         hiddenProjects: z.array(z.string()).optional(),
         archivedSessions: z.array(z.string()).optional(),
         /** relay 接入配置（全局统一；改写后网关需重启重载）。 */

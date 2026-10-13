@@ -20,7 +20,6 @@ export type PaletteActionLabels = {
   newTask: string;
   openDiff: string;
   openAgents: string;
-  openBrowser: string;
   openFinder: string;
   openTerminal: string;
   openEditor: string;
@@ -45,7 +44,6 @@ export function actionItems(labels: PaletteActionLabels, context: PaletteActionC
     { id: 'action:newTask', label: labels.newTask, group: 'actions', shortcut: `${context.modifier}N` },
     { id: 'action:openDiff', label: labels.openDiff, group: 'actions', shortcut: `${context.modifier}⇧D` },
     { id: 'action:openAgents', label: labels.openAgents, group: 'actions', shortcut: `${context.modifier}⇧A` },
-    { id: 'action:openBrowser', label: labels.openBrowser, group: 'actions', shortcut: `${context.modifier}⇧B` },
     ...(context.hasCwd
       ? ([
           { id: 'action:openFinder', label: labels.openFinder, group: 'actions' },

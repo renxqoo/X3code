@@ -1,5 +1,5 @@
 import { createApiClient } from '@x3code/api/client';
-import type { BrowserLinkTarget, CommandView, ImagePayload, PreferencesView, ProviderModel, RelayConfig, UiEvent } from '@x3code/contracts';
+import type { CommandView, ImagePayload, PreferencesView, ProviderModel, RelayConfig, UiEvent } from '@x3code/contracts';
 import { isSettableThinkingLevel } from '@x3code/contracts';
 
 import { copy } from '@/strings';
@@ -539,7 +539,7 @@ export function createLiveController(client: BridgeClient, store: LiveStore): Li
       if (models.ok) store.setState({ models: models.data });
       return null;
     },
-    async updatePreferences(patch: { defaultModel?: string | null; onboarded?: boolean; projectModels?: Record<string, string>; pinnedSessions?: string[]; trustedDefault?: boolean; hiddenProjects?: string[]; archivedSessions?: string[]; relay?: RelayConfig; hubDev?: { bunPath: string | null; hubEntry: string | null }; browserAutoOpenPanel?: boolean; browserExternalLinkTarget?: BrowserLinkTarget; browserLocalLinkTarget?: BrowserLinkTarget }): Promise<PreferencesView | null> {
+    async updatePreferences(patch: { defaultModel?: string | null; onboarded?: boolean; projectModels?: Record<string, string>; pinnedSessions?: string[]; trustedDefault?: boolean; hiddenProjects?: string[]; archivedSessions?: string[]; relay?: RelayConfig; hubDev?: { bunPath: string | null; hubEntry: string | null } }): Promise<PreferencesView | null> {
       const outcome = await api.app.setPreference(patch);
       if (!outcome.ok) return null;
       store.setState({ preferences: outcome.data });

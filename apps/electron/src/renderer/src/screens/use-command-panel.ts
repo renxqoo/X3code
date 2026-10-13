@@ -80,7 +80,6 @@ export function useCommandPanel(args: UseCommandPanelArgs): CommandPanelApi {
       if (id === 'action:newTask') openNewTask();
       else if (id === 'action:openDiff') uiStore.getState().openDiffPane();
       else if (id === 'action:openAgents') uiStore.getState().openAgentsPane();
-      else if (id === 'action:openBrowser') uiStore.getState().openBrowserPane();
       else if (id === 'action:openFinder') void workspaceActions.openInSystem(activeCwd, 'finder');
       else if (id === 'action:openTerminal') void workspaceActions.openInSystem(activeCwd, 'terminal');
       else if (id === 'action:openEditor') void workspaceActions.openInSystem(activeCwd, 'editor');

@@ -1,4 +1,4 @@
-import type { AgentDefinition, ApiOutcome, BrowserLinkTarget, CommandView, IdleRecycleMinutes, ImagePayload, PluginCandidateView, PluginProposalRow, ProviderModel, RelayConfig, RuntimeSnapshotView, SkillCandidateView } from '@x3code/contracts';
+import type { AgentDefinition, ApiOutcome, CommandView, IdleRecycleMinutes, ImagePayload, PluginCandidateView, PluginProposalRow, ProviderModel, RelayConfig, RuntimeSnapshotView, SkillCandidateView } from '@x3code/contracts';
 import { thinkingLevelOfLabel } from '@x3code/contracts';
 
 import { writeClipboard } from '@/lib/write-clipboard';
@@ -186,7 +186,7 @@ export type WorkspaceActions = {
   /** 通用通知（bash 携图拒绝等接线层提示）。 */
   readonly showNotice: (text: string) => void;
   /** J2 通用偏好保存（trustedDefault / 宿主路径）。 */
-  readonly saveGeneralPreferences: (patch: { trustedDefault?: boolean; browserAutoOpenPanel?: boolean; browserExternalLinkTarget?: BrowserLinkTarget; browserLocalLinkTarget?: BrowserLinkTarget }) => Promise<boolean>;
+  readonly saveGeneralPreferences: (patch: { trustedDefault?: boolean }) => Promise<boolean>;
   /** 保存 relay 配置（写 settings.json 唯一真相 + 网关重启重载）。 */
   readonly saveRelay: (relay: RelayConfig) => Promise<boolean>;
   readonly testProvider: (name: string, modelId: string | undefined) => Promise<{ ok: true; latencyMs: number } | { ok: false; reason: string }>;

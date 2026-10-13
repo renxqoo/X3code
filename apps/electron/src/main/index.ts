@@ -9,29 +9,6 @@ import { EMPTY_RELAY_CONFIG, ApiSchemas, type UiEvent } from '@x3code/contracts'
 import { appError } from '@x3code/api';
 
 import { createApiRoutes } from './api-routes';
-import { createBrowserHost } from './browser-host/browser-host';
-
-/** Chrome 二进制发现（D7：环境变量 > 标准位置探测；null = 引导态）。 */
-/** bw CLI 发现（PATH 解析；找不到 = 确认门通知链降级，不影响面板主功能）。 */
-function findBwCli(): string | null {
-  const pathEnv = process.env['PATH'] ?? '';
-  for (const dir of pathEnv.split(':')) {
-    const candidate = join(dir, 'bw');
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-function detectChromePath(): string | null {
-  const fromEnv = process.env['BUN_CHROME_PATH'];
-  if (fromEnv !== undefined && fromEnv.length > 0) return fromEnv;
-  const candidates = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-  ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
-}
 import { createSkillImporter } from './skill-import';
 import { createPluginImporter } from './plugin-import';
 import { createAgentDefinitionsStore } from './agent-definitions-store';
@@ -391,30 +368,11 @@ void app.whenReady().then(async () => {
       getGateway();
     };
 
-    const browserHostRef: { current: ReturnType<typeof createBrowserHost> | null } = { current: null };
-  // Agent worker 的 env 注入面：BW_HOME 常驻（hub→worker 全量透传已实证）；
-  // X3CODE_BROWSER_CDP 随 hostState ready 回写（端口定格后）
-  process.env['BW_HOME'] = join(app.getPath('userData'), 'browser-bw-home');
-  browserHostRef.current = createBrowserHost({
-    userDataDir: app.getPath('userData'),
-    chromePath: detectChromePath(),
-    bwPath: findBwCli(),
-    onEvent: (event) => {
-      if (event.type === 'hostState' && event.phase === 'ready' && event.cdpEndpoint !== undefined && event.cdpEndpoint !== null) {
-        process.env['X3CODE_BROWSER_CDP'] = event.cdpEndpoint;
-      }
-      const target = mainWindow;
-      if (target === null || target.isDestroyed()) return;
-      target.webContents.send('x3code:browser-event', event);
-    },
-    log: (message) => logger.log(`browser:${message}`),
-  });
-  routes = createApiRoutes({
+    routes = createApiRoutes({
       runtime,
       settings,
       keyStore,
       monitor: monitorRef,
-      browserHost: browserHostRef.current,
       restartGateway,
       onPolicySyncFailed: (minutes, reason) => {
         loggingToMonitor.log(`set_idle_retire_failed:${minutes}:${reason}`);
@@ -485,7 +443,6 @@ void app.whenReady().then(async () => {
   });
   app.on('before-quit', () => {
     void gatewayProcess?.stop();
-    browserHostRef.current?.stop();
   });
 
   ipcMain.handle('x3code:invoke', (_event, payload: unknown) => {

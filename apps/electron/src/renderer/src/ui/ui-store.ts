@@ -122,10 +122,8 @@ export type UiActions = {
   togglePanelFromHeader: () => void;
   openDiffPane: () => void;
   openAgentsPane: () => void;
-  openBrowserPane: () => void;
   toggleDiffPane: () => void;
   toggleAgentsPane: () => void;
-  toggleBrowserPane: () => void;
   closePanel: () => void;
   closePanelTabById: (id: string) => void;
   focusPanelTabById: (id: string) => void;
@@ -213,8 +211,6 @@ export function createUiStore() {
     openAgentsPane: () => set((state) => ({ panel: openPanel(state.panel, singletonTab('agents')) })),
     toggleDiffPane: () => set((state) => ({ panel: togglePanel(state.panel, 'diff') })),
     toggleAgentsPane: () => set((state) => ({ panel: togglePanel(state.panel, 'agents') })),
-    openBrowserPane: () => set((state) => ({ panel: openPanel(state.panel, singletonTab('browser')) })),
-    toggleBrowserPane: () => set((state) => ({ panel: togglePanel(state.panel, 'browser') })),
     closePanel: () => set({ panel: closeAllPanels() }),
     closePanelTabById: (id) => set((state) => ({ panel: closePanelTab(state.panel, id) })),
     focusPanelTabById: (id) => set((state) => ({ panel: focusPanelTab(state.panel, id) })),

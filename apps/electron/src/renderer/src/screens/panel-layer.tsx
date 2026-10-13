@@ -2,7 +2,6 @@ import * as React from 'react';
 import { useStore } from 'zustand';
 
 import { AgentPanel } from '@/agent-panel/agent-panel';
-import { BrowserPanel } from '@/browser/browser-panel';
 import { DiffPanel } from '@/diff-panel/diff-panel';
 import { FilePane } from '@/panel/file-pane';
 import { PanelDock } from '@/panel/panel-dock';
@@ -15,12 +14,6 @@ import { copy } from '@/strings';
 import { store as liveStore, workspaceActions } from '@/live/workspace-runtime';
 import { threadModelOf } from '@/live/store';
 import { uiStore } from '@/ui/ui-store';
-
-/** 浏览器面板桥（window.x3code 的 invoke + subscribeBrowser 面；测试/SSR 环境 null）。 */
-const browserBridge: Parameters<typeof BrowserPanel>[0]['bridge'] =
-  typeof window !== 'undefined' && (window as { x3code?: { invoke?: unknown; subscribeBrowser?: unknown } }).x3code?.subscribeBrowser !== undefined
-    ? ((window as unknown as { x3code: { invoke: (m: string, p: unknown) => Promise<unknown>; subscribeBrowser: (cb: (e: unknown) => void) => () => void } }).x3code)
-    : null;
 
 /**
  * 面板层（T34 M2 区域化，0 props + memo）：多标签 Dock（活跃 pane 内容）。
@@ -40,7 +33,7 @@ function PanelLayer(): React.JSX.Element | null {
 
   /** PanelDock 是 memo 边界：tab 视图数组 memo 化（panel.tabs 引用仅在面板操作时变化）。 */
   const dockTabs = React.useMemo(
-    () => panel.tabs.map((tab) => ({ id: tab.id, label: panelTabLabel(tab, { diff: copy.panel.tabDiff, agents: copy.panel.tabAgents, browser: copy.panel.tabBrowser }) })),
+    () => panel.tabs.map((tab) => ({ id: tab.id, label: panelTabLabel(tab, { diff: copy.panel.tabDiff, agents: copy.panel.tabAgents }) })),
     [panel.tabs],
   );
 
@@ -56,8 +49,6 @@ function PanelLayer(): React.JSX.Element | null {
     >
       {activePanelTab?.kind === 'agents' ? (
         <AgentPanel agents={activeThread.agents} now={agentsNow} onSteer={workspaceActions.steerSubagent} />
-      ) : activePanelTab?.kind === 'browser' ? (
-        <BrowserPanel bridge={browserBridge} />
       ) : activePanelTab?.kind === 'diff' ? (
         <DiffPanel diff={threadDiff} onOpenFile={openFileTab} />
       ) : activePanelTab?.kind === 'file' && activePanelTab.cwd !== undefined && activePanelTab.path !== undefined ? (

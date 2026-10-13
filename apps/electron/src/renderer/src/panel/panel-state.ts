@@ -4,7 +4,7 @@
  * 关闭活跃 tab 时焦点移到右邻，无右邻取左邻——与浏览器 tab 惯例一致。
  */
 
-export type PanelKind = 'diff' | 'agents' | 'file' | 'browser';
+export type PanelKind = 'diff' | 'agents' | 'file';
 
 export type PanelTab = {
   id: string;
@@ -22,7 +22,7 @@ export type PanelState = {
 export const EMPTY_PANEL: PanelState = { tabs: [], activeId: null };
 
 /** 单例 tab 的稳定 id（同 kind 只存一份）。 */
-export function singletonTab(kind: 'diff' | 'agents' | 'browser'): PanelTab {
+export function singletonTab(kind: 'diff' | 'agents'): PanelTab {
   return { id: kind, kind };
 }
 
@@ -56,7 +56,7 @@ export function focusPanelTab(state: PanelState, id: string): PanelState {
 }
 
 /** 快捷键 toggle 语义：已开且是活跃 tab → 关闭；否则打开并聚焦。 */
-export function togglePanel(state: PanelState, kind: 'diff' | 'agents' | 'browser'): PanelState {
+export function togglePanel(state: PanelState, kind: 'diff' | 'agents'): PanelState {
   if (state.activeId === kind) return closePanelTab(state, kind);
   return openPanel(state, singletonTab(kind));
 }
@@ -69,15 +69,12 @@ export function closeAllPanels(): PanelState {
 export type PanelTabLabels = {
   diff: string;
   agents: string;
-  browser: string;
 };
 
 /** tab → 标签文案（文件 tab 用相对路径；视图菜单与标签行共用同一词表）。 */
 export function panelTabLabel(tab: PanelTab, labels: PanelTabLabels): string {
   if (tab.kind === 'file') return tab.path ?? tab.id;
-  if (tab.kind === 'diff') return labels.diff;
-  if (tab.kind === 'agents') return labels.agents;
-  return labels.browser;
+  return tab.kind === 'diff' ? labels.diff : labels.agents;
 }
 
 /** 会话级面板档案（模块单例持有；Map 形态支持会话消亡时的键回收）。 */
