@@ -137,6 +137,14 @@ export const BrowserApiSchemas = {
     }).strict(),
     result: z.object({}).strict(),
   },
+  'browser/streamStart': {
+    params: z.object({ targetId: z.string().min(1), maxWidth: z.number().int().positive().max(3840), maxHeight: z.number().int().positive().max(2160) }).strict(),
+    result: z.object({}).strict(),
+  },
+  'browser/streamStop': {
+    params: targetIdOnly,
+    result: z.object({}).strict(),
+  },
 } as const;
 
 // —— 事件帧（独立 subscribe 面：x3code:browser-event）——

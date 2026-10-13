@@ -99,9 +99,21 @@ export const zh: typeof en = {
       openUsage: '打开用量',
     },
   },
+  browser: {
+    newTab: '新建标签页',
+    addressPlaceholder: '输入网址',
+    addressLabel: '地址栏',
+    attach: '复制 Agent 接入命令',
+    attachCopied: '已复制',
+    attachHint: '复制 bw attach 命令（Agent 操作同一浏览器的入口）',
+    canvasAlt: '页面投屏',
+    emptyFrame: '无投屏画面',
+    starting: '浏览器启动中…',
+  },
   panel: {
     tabDiff: 'Diff',
     tabAgents: '子代理',
+    tabBrowser: '浏览器',
     close: '收起面板',
     closeTab: (label: string): string => `关闭 ${label}`,
     file: {

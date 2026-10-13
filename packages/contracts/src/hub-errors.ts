@@ -69,7 +69,8 @@ export type AppErrorCode =
   | 'skill_write_failed' | 'skill_not_registered' | 'skill_not_supported'
   | 'plugin_source_invalid' | 'plugin_name_invalid' | 'plugin_exists' | 'plugin_builtin_immutable'
   | 'provider_name_conflict' | 'provider_api_unsupported' | 'provider_baseurl_invalid'
-  | 'provider_baseurl_changed' | 'settings_unavailable';
+  | 'provider_baseurl_changed' | 'settings_unavailable'
+  | 'browser_unavailable' | 'browser_invalid_url' | 'browser_target_gone' | 'browser_pick_miss';
 export type AppError = { kind: AppErrorCode; message?: string };
 
 /** 跨 IPC 的统一错误判别联合（渲染层文案查表按 kind 分派——Record 键集编译期封闭） */

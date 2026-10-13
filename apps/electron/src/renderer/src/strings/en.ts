@@ -98,9 +98,21 @@ export const en = {
       openUsage: 'Open usage',
     },
   },
+  browser: {
+    newTab: 'New tab',
+    addressPlaceholder: 'Enter address',
+    addressLabel: 'Address bar',
+    attach: 'Copy agent attach command',
+    attachCopied: 'Copied',
+    attachHint: 'Copy the bw attach command (agent entry to this browser)',
+    canvasAlt: 'Page screencast',
+    emptyFrame: 'No frame',
+    starting: 'Starting browser…',
+  },
   panel: {
     tabDiff: 'Diff',
     tabAgents: 'Agents',
+    tabBrowser: 'Browser',
     close: 'Close panel',
     closeTab: (label: string): string => `Close ${label}`,
     file: {

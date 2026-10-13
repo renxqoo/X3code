@@ -38,13 +38,16 @@ export type SupervisorDeps = {
   probeHttp: (port: number) => Promise<boolean>;
   /** 命令行探测（macOS ps；返回进程完整命令行，null = 进程不存在）。 */
   readCmdline: (pid: number) => string | null;
-  /** 进程 spawn（注入便于测试；默认 node spawn，detached 进程组）。 */
-  spawnChrome: (chromePath: string, args: readonly string[]) => { pid: number | null; onExit: (cb: () => void) => void; killGroup: () => void };
+  /** 进程 spawn（注入便于测试；缺省 node spawn，detached 进程组）。 */
+  spawnChrome?: (chromePath: string, args: readonly string[]) => ChromeSpawnHandle;
   /** 相位变更通知。 */
   onPhase: (state: SupervisorState) => void;
   /** 诊断日志（中性英文；不进用户文案）。 */
   log?: (message: string) => void;
 };
+
+/** 进程 spawn 句柄（supervisor 只依赖此形状；默认实现 = detached 进程组 + stdio ignore）。 */
+export type ChromeSpawnHandle = { pid: number | null; onExit: (cb: () => void) => void; killGroup: () => void };
 
 type HostFile = { port: number; pid: number | null };
 
@@ -57,10 +60,8 @@ const CHROME_FLAGS = [
   '--hide-scrollbars',
 ] as const;
 
-type SpawnHandle = { pid: number | null; onExit: (cb: () => void) => void; killGroup: () => void };
-
 /** 默认 spawn：detached 进程组 + stdio ignore（Chrome 独立于主进程存活）。 */
-function defaultSpawnChrome(chromePath: string, args: readonly string[]): SpawnHandle {
+function defaultSpawnChrome(chromePath: string, args: readonly string[]): ChromeSpawnHandle {
   const proc = spawn(chromePath, [...args], { detached: true, stdio: ['ignore', 'ignore', 'ignore'] });
   const pid = proc.pid;
   return {
@@ -87,7 +88,7 @@ export function createChromeSupervisor(deps: SupervisorDeps) {
   const profileDir = join(deps.userDataDir, 'browser-profile');
 
   let state: SupervisorState = { phase: 'starting', port: 0, chromePath: deps.chromePath, pid: null };
-  let child: SpawnHandle | null = null;
+  let child: ChromeSpawnHandle | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let wsFails = 0;
   let startFails = 0;
