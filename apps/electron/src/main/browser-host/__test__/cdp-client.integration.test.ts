@@ -171,6 +171,27 @@ describe.skipIf(chromePath === null)('cdp-client 集成（真 Chrome）', () => 
     expect(inputs.length).toBeGreaterThan(inputsBefore);
   }, 30000);
 
+  test('pickElement 拾取元素：结构化数据 + 敏感属性脱敏（真 Chrome）', async () => {
+    const { targetId } = activeTarget();
+    if (!client) throw new Error('client not ready');
+    // fixture：form 页带 password 字段 + 普通按钮
+    await client.navigate(targetId, `http://127.0.0.1:${fixture?.port}/form`);
+    await sleep(600);
+    // 采集脚本走 element-picker 的表达式（PICK_X/PICK_Y 替换后 evaluate）
+    const { PICK_COLLECT_EXPRESSION, toPickedElement } = await import('../element-picker');
+    const expression = PICK_COLLECT_EXPRESSION.replace('PICK_X', '150').replace('PICK_Y', '20');
+    const raw = await client.evaluate<Record<string, unknown>>(targetId, expression);
+    expect(raw).not.toBeNull();
+    if (raw !== null) {
+      const picked = toPickedElement(raw);
+      expect(picked.tag).toBe('input');
+      // 密码框：outerHTML 的 value 必须脱敏
+      expect(picked.outerHtml).not.toMatch(/value="[^*]/);
+      expect(picked.selector.length).toBeGreaterThan(0);
+      expect(picked.bbox.width).toBeGreaterThan(0);
+    }
+  }, 30000);
+
   test('视口设置事件', async () => {
     const { targetId } = activeTarget();
     if (!client) throw new Error('client not ready');

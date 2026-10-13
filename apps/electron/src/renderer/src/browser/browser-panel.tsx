@@ -2,7 +2,11 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 import { copy } from '@/strings';
+import { insertIntoDraft } from '@/composer/composer-controller';
+import { uiStore } from '@/ui/ui-store';
+import type { PickedElement } from '@x3code/contracts';
 
+import { pickedElementText, pickedImageName } from './picked-element-text';
 import { useBrowserPanel, type BrowserBridge } from './use-browser-panel';
 
 /**
@@ -15,6 +19,7 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
   const canvasRef = React.useRef<HTMLImageElement | null>(null);
   const [address, setAddress] = React.useState('');
   const [copied, setCopied] = React.useState(false);
+  const [pickMode, setPickMode] = React.useState(false);
 
   const activeTab = state.tabs.find((tab) => tab.active);
   const frameSrc =
@@ -44,6 +49,21 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
     const y = Math.round((event.clientY - rect.top) * scaleY);
     if (x < 0 || y < 0 || x > state.frame.meta.deviceWidth || y > state.frame.meta.deviceHeight) return null;
     return { x, y };
+  };
+
+  /** 拾取模式点击：采集 → 脱敏后的元素卡片 + 截图进输入区。 */
+  const onPickClick = (event: React.MouseEvent<HTMLImageElement>): void => {
+    if (!pickMode) return;
+    setPickMode(false);
+    const point = toPage(event);
+    if (point === null || activeTab === undefined || bridge === null) return;
+    void bridge.invoke('browser/pickElement', { targetId: activeTab.targetId, x: point.x, y: point.y }).then((raw) => {
+      if (typeof raw !== 'object' || raw === null || (raw as { ok?: boolean }).ok !== true) return;
+      const data = (raw as { data: { element: PickedElement; shotB64: string } }).data;
+      // 文本进草稿 + 截图进附件暂存（既有 composerRestore 通道）
+      insertIntoDraft(pickedElementText(data.element));
+      uiStore.getState().setComposerRestore([{ name: pickedImageName(data.element, Date.now()), payload: { data: data.shotB64, mimeType: 'image/jpeg' } }]);
+    }, () => undefined);
   };
 
   const onNavigate = (): void => {
@@ -114,6 +134,17 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
         />
         <button
           type="button"
+          className={cn(
+            'shrink-0 rounded-md border px-[8px] py-[4px] text-[11px]',
+            pickMode ? 'border-ring bg-accent text-accent-foreground' : 'border-border text-muted-foreground hover:bg-accent/50',
+          )}
+          onClick={() => setPickMode((v) => !v)}
+          title={copy.browser.pickHint}
+        >
+          {copy.browser.pick}
+        </button>
+        <button
+          type="button"
           className="shrink-0 rounded-md border border-border px-[8px] py-[4px] text-[11px] text-muted-foreground hover:bg-accent/50"
           onClick={onCopyAttach}
           title={copy.browser.attachHint}
@@ -129,9 +160,13 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
             ref={canvasRef}
             src={frameSrc}
             alt={copy.browser.canvasAlt}
-            className="h-full w-full object-contain"
+            className={cn('h-full w-full object-contain outline-none', pickMode ? 'cursor-crosshair' : '')}
             draggable={false}
             onClick={(e) => {
+              if (pickMode) {
+                onPickClick(e);
+                return;
+              }
               const point = toPage(e);
               if (point === null || activeTab === undefined) return;
               invoke('browser/input', { targetId: activeTab.targetId, input: { kind: 'mouse', x: point.x, y: point.y, button: 'left', press: true } });

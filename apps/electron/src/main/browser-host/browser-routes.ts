@@ -1,6 +1,7 @@
 import { BROWSER_URL_SCHEMES, type BrowserInputEvent } from '@x3code/contracts';
 import { appError } from '@x3code/api';
 
+import { PICK_COLLECT_EXPRESSION, toPickedElement, type RawPick } from './element-picker';
 import type { createBrowserHost } from './browser-host';
 
 /**
@@ -101,11 +102,21 @@ export function createBrowserRoutes(deps: { host: BrowserHost }) {
         return { ok: true as const, data: {} };
       },
       'browser/streamStop': async (params: { targetId: string }) => {
-    await Promise.resolve();
+        await Promise.resolve();
         const c = client();
         if (c === null) return unavailable;
         c.stopScreencast(params.targetId);
         return { ok: true as const, data: {} };
+      },
+      'browser/pickElement': async (params: { targetId: string; x: number; y: number }) => {
+        const c = client();
+        if (c === null) return unavailable;
+        const expression = PICK_COLLECT_EXPRESSION.replace('PICK_X', String(Math.round(params.x))).replace('PICK_Y', String(Math.round(params.y)));
+        const raw = await c.evaluate<RawPick>(params.targetId, expression);
+        if (raw === null) return { ok: false as const, error: appError('browser_pick_miss') };
+        const element = toPickedElement(raw);
+        const shotB64 = (await c.screenshot(params.targetId)) ?? '';
+        return { ok: true as const, data: { element, shotB64 } };
       },
     } as Record<string, (params: never) => Promise<unknown>>,
   };

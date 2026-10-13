@@ -91,6 +91,25 @@ export const BrowserInputEventSchema = z.discriminatedUnion('kind', [
 ]);
 export type BrowserInputEvent = z.infer<typeof BrowserInputEventSchema>;
 
+// —— 拾取元素（PickedElement：脱敏管线后的定形形状）——
+
+export const PickedElementSchema = z.object({
+  tag: z.string().min(1).max(40),
+  id: z.string().max(200).optional(),
+  classes: z.array(z.string().max(100)).max(20),
+  ariaLabel: z.string().max(100).optional(),
+  textPreview: z.string().max(120),
+  selector: z.string().max(200),
+  bbox: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }).strict(),
+  styles: z.object({
+    fontSize: z.string().max(40), color: z.string().max(60), backgroundColor: z.string().max(60),
+    margin: z.string().max(80), padding: z.string().max(80), display: z.string().max(40),
+  }).strict(),
+  outerHtml: z.string().max(2048),
+  pageUrl: z.string().max(2048),
+}).strict();
+export type PickedElement = z.infer<typeof PickedElementSchema>;
+
 // —— invoke 方法 schema ——
 
 const targetIdOnly = z.object({ targetId: z.string().min(1) }).strict();
@@ -123,6 +142,13 @@ export const BrowserApiSchemas = {
   'browser/tabClose': {
     params: targetIdOnly,
     result: z.object({}).strict(),
+  },
+  'browser/pickElement': {
+    params: z.object({ targetId: z.string().min(1), x: z.number().finite().nonnegative().max(7680), y: z.number().finite().nonnegative().max(4320) }).strict(),
+    result: z.object({
+      element: PickedElementSchema,
+      shotB64: z.string(),
+    }).strict(),
   },
   'browser/tabActivate': {
     params: targetIdOnly,

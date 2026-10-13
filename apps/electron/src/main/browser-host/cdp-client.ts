@@ -257,6 +257,21 @@ export function createCdpClient(deps: CdpClientDeps) {
     }
   }
 
+  /** 页内求值（主世界）：拾取采集/调试读数共用；返回值由调用方防御（敌意载荷）。 */
+  async function evaluate<T>(targetId: string, expression: string): Promise<T | null> {
+    const session = await attachTarget(targetId);
+    const result = (await sessionSend(session, 'Runtime.evaluate', { expression, returnByValue: true })) as { result?: { value?: unknown } };
+    const value = result.result?.value;
+    return value === undefined || value === null ? null : (value as T);
+  }
+
+  /** 视口截图（jpeg base64；bbox 裁剪由调用方 image 层处理）。 */
+  async function screenshot(targetId: string): Promise<string | null> {
+    const session = await attachTarget(targetId);
+    const result = (await sessionSend(session, 'Page.captureScreenshot', { format: 'jpeg', quality: 60 })) as { data?: string };
+    return result.data ?? null;
+  }
+
   async function navigate(targetId: string, url: string): Promise<void> {
     const session = await attachTarget(targetId);
     await sessionSend(session, 'Page.navigate', { url });
@@ -346,6 +361,7 @@ export function createCdpClient(deps: CdpClientDeps) {
   return {
     connect, startScreencast, stopScreencast, navigate, dispatchInput, setViewport,
     activateTab, openTab, closeTab, refreshTabs, currentTabs, disconnect,
+    evaluate, screenshot,
   };
 }
 

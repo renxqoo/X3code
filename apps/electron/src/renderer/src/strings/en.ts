@@ -108,6 +108,8 @@ export const en = {
     canvasAlt: 'Page screencast',
     emptyFrame: 'No frame',
     starting: 'Starting browser…',
+    pick: 'Pick element',
+    pickHint: 'Click a page element to add its selector/styles/screenshot to the conversation',
   },
   panel: {
     tabDiff: 'Diff',

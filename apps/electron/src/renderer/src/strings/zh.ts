@@ -109,6 +109,8 @@ export const zh: typeof en = {
     canvasAlt: '页面投屏',
     emptyFrame: '无投屏画面',
     starting: '浏览器启动中…',
+    pick: '选取元素',
+    pickHint: '点选页面元素，把选择器/样式/截图加入对话',
   },
   panel: {
     tabDiff: 'Diff',

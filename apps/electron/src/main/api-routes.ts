@@ -21,7 +21,7 @@ import type { createBrowserHost } from './browser-host/browser-host';
 
 /** 未接线装配（测试）用的 fail-closed 宿主：所有操作返回 browser_unavailable。 */
 const failClosedBrowserHost: ReturnType<typeof createBrowserHost> = {
-  ensureStarted: async () => undefined,
+  ensureStarted: () => Promise.resolve(undefined),
   currentClient: () => null,
   currentPhase: () => 'failed',
   currentPort: () => 0,
