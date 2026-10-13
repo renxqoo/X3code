@@ -123,6 +123,13 @@ export const en = {
     viewportMobile: 'Mobile',
     confirmApprove: 'Approve',
     confirmDeny: 'Deny',
+    debugConsole: 'Console',
+    debugErrors: 'Errors',
+    debugRequests: 'Network',
+    debugPerf: 'Perf',
+    debugEmpty: 'No data (agent not attached or no records for this session)',
+    debugShow: 'Show debug panel',
+    debugHide: 'Hide debug panel',
   },
   panel: {
     tabDiff: 'Diff',

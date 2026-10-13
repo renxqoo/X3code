@@ -143,6 +143,15 @@ export const BrowserApiSchemas = {
     params: targetIdOnly,
     result: z.object({}).strict(),
   },
+  'browser/debugQuery': {
+    params: z.object({ targetId: z.string().min(1), source: z.enum(['console', 'errors', 'requests', 'perf']) }).strict(),
+    result: z.union([
+      z.object({ source: z.literal('console'), rows: z.array(z.object({ level: z.string().max(20), text: z.string().max(2000) }).strict()) }).strict(),
+      z.object({ source: z.literal('errors'), rows: z.array(z.object({ level: z.literal('error'), text: z.string().max(2000) }).strict()) }).strict(),
+      z.object({ source: z.literal('requests'), rows: z.array(z.object({ url: z.string().max(2048), method: z.string().max(10), status: z.number().int(), durationMs: z.number(), size: z.number() }).strict()) }).strict(),
+      z.object({ source: z.literal('perf'), summary: z.string().max(4000) }).strict(),
+    ]),
+  },
   'browser/confirm': {
     params: z.object({ sid: z.string().min(1), cid: z.string().min(1), approve: z.boolean() }).strict(),
     result: z.object({ ok: z.boolean() }).strict(),

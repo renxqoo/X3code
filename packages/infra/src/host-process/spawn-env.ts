@@ -12,6 +12,8 @@
 const NAMED_ALLOW = new Set([
   'PATH',
   'HOME',
+  'X3CODE_BROWSER_CDP',
+  'BW_HOME',
   'LANG',
   'LANGUAGE',
   'TERM',

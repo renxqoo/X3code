@@ -101,7 +101,18 @@ export function createBwBridge(deps: BwBridgeDeps) {
     return out;
   }
 
-  return { listSessions, confirm, homeReady, matchSessionByTab, listPendingConfirms };
+  /** 调试数据面（bw s console/errors/requests/perf）：按会话拉取。失败返回 null（降级空 drawer）。 */
+  async function debugQuery(sid: string, source: 'console' | 'errors' | 'requests' | 'perf'): Promise<unknown> {
+    const result = await run(['s', source, sid]);
+    if (!result.ok) return null;
+    try {
+      return JSON.parse(result.stdout) as unknown;
+    } catch {
+      return null;
+    }
+  }
+
+  return { listSessions, confirm, homeReady, matchSessionByTab, listPendingConfirms, debugQuery };
 }
 
 function normalizeUrlKey(url: string): string {

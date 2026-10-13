@@ -124,6 +124,13 @@ export const zh: typeof en = {
     viewportMobile: '手机',
     confirmApprove: '批准',
     confirmDeny: '拒绝',
+    debugConsole: '控制台',
+    debugErrors: '错误',
+    debugRequests: '网络',
+    debugPerf: '性能',
+    debugEmpty: '暂无数据（Agent 未接入或该会话无记录）',
+    debugShow: '显示调试面板',
+    debugHide: '收起调试面板',
   },
   panel: {
     tabDiff: 'Diff',

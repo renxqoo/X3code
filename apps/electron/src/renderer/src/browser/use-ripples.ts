@@ -14,13 +14,14 @@ export function useRipples(actions: ReadonlyArray<{ id: number; kind: string; x?
   const lastIdRef = React.useRef(0);
 
   React.useEffect(() => {
+    const lastAction = actions[actions.length - 1];
     const fresh = actions.filter((a) => a.id > lastIdRef.current && a.kind === 'click' && a.x !== undefined && a.y !== undefined);
-    if (fresh.length === 0) {
-      if (actions.length > 0) lastIdRef.current = actions[actions.length - 1]!.id;
-      return;
-    }
-    lastIdRef.current = actions[actions.length - 1]!.id;
-    setRipples((prev) => [...prev, ...fresh.map((a) => ({ id: a.id, x: a.x!, y: a.y!, at: Date.now() }))].slice(-8));
+    if (lastAction !== undefined) lastIdRef.current = lastAction.id;
+    if (fresh.length === 0) return;
+    setRipples((prev) => [
+      ...prev,
+      ...fresh.flatMap((a) => (a.x !== undefined && a.y !== undefined ? [{ id: a.id, x: a.x, y: a.y, at: Date.now() }] : [])),
+    ].slice(-8));
     const timer = setTimeout(() => {
       setRipples((prev) => prev.filter((r) => Date.now() - r.at < RIPPLE_MS));
     }, RIPPLE_MS + 100);

@@ -148,6 +148,20 @@ bun run ci        # lint → typecheck → build → test
 7. **必跑的四条 journey**（各自对应一类已修缺陷，详见 `/tmp/mobile-bw-walkthrough.md`）：配对发现（失败文案非空）、发送失败可见性（文案逐字可读不截断）、**从搜索/归档页打开会话后发消息**（回复必须落在当前会话）、断线自动恢复（无需手动重连）。
 8. **收尾**：`bw s close`；装置与数据留 /tmp，不入库。
 
+## 浏览器面板（T61）Agent 接入
+
+桌面端的浏览器面板是一个共享 headless Chrome（Agent 与用户同屏操作）：
+
+- **接入**：worker env 有 `X3CODE_BROWSER_CDP`（`http://127.0.0.1:<port>`，host ready 后定格）与 `BW_HOME`。
+  `bw s create --cdp-url $X3CODE_BROWSER_CDP --allow-eval --allow-private-network --profile <名>` attach 同一浏览器；
+  面板工具栏「复制 Agent 接入命令」同源生成。
+- **会话纪律**：任务完成即 `bw s close`（会话槽上限 16，重试会话按 idle 永不回收）；
+  `SESSION_BUSY` 等一下串行重试；`BROWSER_DEAD` 直接重试（端口不变，supervisor 会拉回 Chrome）。
+- **确认门**：命令返回 `CONFIRMATION_REQUIRED` + `cid` 时**不要自 confirm**——pending 会落
+  BW_HOME，用户在 X3code 面板通知条批准/拒绝（`bw s confirm` 由面板代跑）；120s 无应答按拒绝处理。
+- **localhost 直达**：dev server 用 `--allow-private-network`，无确认门。
+- **页面复核**：改样式后用 `bw s look` 截图自查；GPU 合成动画页面投屏不产帧（headless 限制），以 look 为准。
+
 ## 提交与交付规范
 
 - 只能提交自己改动的代码：只提交自己点名的文件路径；共享产物混有他人未提交变更时不提交，留待协调；他人在途的门禁失败如实标注归属，不越界代修

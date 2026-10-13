@@ -140,7 +140,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
       if (version.webSocketDebuggerUrl === undefined) throw new Error('no browser ws');
       client = createCdpClient({ browserWsUrl: version.webSocketDebuggerUrl, onEvent: deps.onEvent, log: deps.log });
       await client.connect();
-      pushHostState('ready', browserCdpEndpoint(port));
+      deps.onEvent({ type: 'hostState', phase: 'ready', cdpEndpoint: browserCdpEndpoint(port) });
     } catch (error) {
       deps.log?.(`browser client attach failed: ${String(error)}`);
       // supervisor 心跳兜底：等下一轮 restarting
@@ -172,6 +172,17 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     started = false;
   }
 
+  /** 调试数据面（browser/debugQuery 路由）：tab → bw 会话（URL 对齐）→ CLI。 */
+  async function debugForTarget(targetId: string, source: string): Promise<unknown> {
+    if (bwBridge === null) return null;
+    const tab = client?.currentTabs().find((t) => t.targetId === targetId);
+    if (tab === undefined) return null;
+    const sessions = await bwBridge.listSessions();
+    const matched = bwBridge.matchSessionByTab(sessions, tab.url);
+    if (matched === null) return null;
+    return bwBridge.debugQuery(matched.sessionId, source as 'console' | 'errors' | 'requests' | 'perf');
+  }
+
   /** 确认门代跑（browser/confirm 路由）。 */
   async function confirmGate(sid: string, cid: string, approve: boolean): Promise<boolean> {
     if (bwBridge === null) return false;
@@ -180,5 +191,5 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     return ok;
   }
 
-  return { ensureStarted, currentClient, currentPhase, currentPort, stop, confirmGate };
+  return { ensureStarted, currentClient, currentPhase, currentPort, stop, confirmGate, debugForTarget };
 }

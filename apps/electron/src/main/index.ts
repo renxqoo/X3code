@@ -392,11 +392,17 @@ void app.whenReady().then(async () => {
     };
 
     const browserHostRef: { current: ReturnType<typeof createBrowserHost> | null } = { current: null };
+  // Agent worker 的 env 注入面：BW_HOME 常驻（hub→worker 全量透传已实证）；
+  // X3CODE_BROWSER_CDP 随 hostState ready 回写（端口定格后）
+  process.env['BW_HOME'] = join(app.getPath('userData'), 'browser-bw-home');
   browserHostRef.current = createBrowserHost({
     userDataDir: app.getPath('userData'),
     chromePath: detectChromePath(),
     bwPath: findBwCli(),
     onEvent: (event) => {
+      if (event.type === 'hostState' && event.phase === 'ready' && event.cdpEndpoint !== undefined && event.cdpEndpoint !== null) {
+        process.env['X3CODE_BROWSER_CDP'] = event.cdpEndpoint;
+      }
       const target = mainWindow;
       if (target === null || target.isDestroyed()) return;
       target.webContents.send('x3code:browser-event', event);

@@ -10,6 +10,7 @@ import { pickedElementText, pickedImageName } from './picked-element-text';
 import { BrowserActionTimeline } from './browser-action-timeline';
 import { useRipples } from './use-ripples';
 import { useConfirmNotices } from './use-confirm-notices';
+import { BrowserDebugDrawer } from './browser-debug-drawer';
 import { useBrowserPanel, type BrowserBridge } from './use-browser-panel';
 import { BROWSER_VIEWPORT_PRESETS } from '@x3code/contracts';
 
@@ -26,6 +27,7 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
   const [pickMode, setPickMode] = React.useState(false);
   const ripples = useRipples(state.actions);
   const confirmNotices = useConfirmNotices(bridge);
+  const [debugOpen, setDebugOpen] = React.useState(false);
 
   const activeTab = state.tabs.find((tab) => tab.active);
   const frameSrc =
@@ -196,16 +198,20 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
         )}
         {/* 涟漪叠加层：click 动作的扩散圆环（pointer-events 穿透） */}
         {frameSrc !== null && state.frame !== null && activeTab !== undefined
-          ? ripples.map((ripple) => (
-              <span
-                key={ripple.id}
-                aria-hidden
-                style={{ left: `${(ripple.x / state.frame!.meta.deviceWidth) * 100}%`, top: `${(ripple.y / state.frame!.meta.deviceHeight) * 100}%` }}
-                className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
-              >
-                <span className="block h-[18px] w-[18px] animate-ping rounded-full border-2 border-ring/80 bg-ring/30" />
-              </span>
-            ))
+          ? ripples.map((ripple) => {
+              const meta = state.frame?.meta;
+              if (meta === undefined) return null;
+              return (
+                <span
+                  key={ripple.id}
+                  aria-hidden
+                  style={{ left: `${(ripple.x / meta.deviceWidth) * 100}%`, top: `${(ripple.y / meta.deviceHeight) * 100}%` }}
+                  className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+                >
+                  <span className="block h-[18px] w-[18px] animate-ping rounded-full border-2 border-ring/80 bg-ring/30" />
+                </span>
+              );
+            })
           : null}
       </div>
 
@@ -255,6 +261,20 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
       <div className="h-[140px] shrink-0">
         <BrowserActionTimeline actions={state.actions} />
       </div>
+      <div className="flex shrink-0 items-center border-t border-border px-[10px] py-[4px]">
+        <button
+          type="button"
+          className="rounded-md px-[6px] py-[2px] text-[11px] text-muted-foreground hover:bg-accent/50"
+          onClick={() => setDebugOpen((v) => !v)}
+        >
+          {debugOpen ? copy.browser.debugHide : copy.browser.debugShow}
+        </button>
+      </div>
+      {debugOpen ? (
+        <div className="h-[160px] shrink-0">
+          <BrowserDebugDrawer bridge={bridge} targetId={activeTab?.targetId ?? null} />
+        </div>
+      ) : null}
     </div>
   );
 }
