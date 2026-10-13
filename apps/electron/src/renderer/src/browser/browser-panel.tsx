@@ -7,7 +7,11 @@ import { uiStore } from '@/ui/ui-store';
 import type { PickedElement } from '@x3code/contracts';
 
 import { pickedElementText, pickedImageName } from './picked-element-text';
+import { BrowserActionTimeline } from './browser-action-timeline';
+import { useRipples } from './use-ripples';
+import { useConfirmNotices } from './use-confirm-notices';
 import { useBrowserPanel, type BrowserBridge } from './use-browser-panel';
+import { BROWSER_VIEWPORT_PRESETS } from '@x3code/contracts';
 
 /**
  * 浏览器面板（T61 M1）：投屏画布 + tab 条 + 地址栏 + attach 复制条。
@@ -20,6 +24,8 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
   const [address, setAddress] = React.useState('');
   const [copied, setCopied] = React.useState(false);
   const [pickMode, setPickMode] = React.useState(false);
+  const ripples = useRipples(state.actions);
+  const confirmNotices = useConfirmNotices(bridge);
 
   const activeTab = state.tabs.find((tab) => tab.active);
   const frameSrc =
@@ -188,6 +194,66 @@ export function BrowserPanel({ bridge }: { bridge: BrowserBridge | null }) {
             {state.phase === 'ready' ? copy.browser.emptyFrame : copy.browser.starting}
           </div>
         )}
+        {/* 涟漪叠加层：click 动作的扩散圆环（pointer-events 穿透） */}
+        {frameSrc !== null && state.frame !== null && activeTab !== undefined
+          ? ripples.map((ripple) => (
+              <span
+                key={ripple.id}
+                aria-hidden
+                style={{ left: `${(ripple.x / state.frame!.meta.deviceWidth) * 100}%`, top: `${(ripple.y / state.frame!.meta.deviceHeight) * 100}%` }}
+                className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+              >
+                <span className="block h-[18px] w-[18px] animate-ping rounded-full border-2 border-ring/80 bg-ring/30" />
+              </span>
+            ))
+          : null}
+      </div>
+
+      {/* 确认门通知条（bw pending；120s 自动收起） */}
+      {confirmNotices.length > 0 ? (
+        <div className="flex shrink-0 flex-col gap-[4px] border-t border-border bg-accent/30 px-[10px] py-[6px]">
+          {confirmNotices.map((notice) => (
+            <div key={notice.cid} className="flex items-center gap-[8px]">
+              <span className="min-w-0 flex-1 truncate text-[11px]" title={notice.reason}>{notice.reason}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded-md bg-primary px-[8px] py-[2px] text-[11px] text-primary-foreground"
+                onClick={() => invoke('browser/confirm', { sid: notice.sid, cid: notice.cid, approve: true })}
+              >
+                {copy.browser.confirmApprove}
+              </button>
+              <button
+                type="button"
+                className="shrink-0 rounded-md border border-border px-[8px] py-[2px] text-[11px] text-muted-foreground"
+                onClick={() => invoke('browser/confirm', { sid: notice.sid, cid: notice.cid, approve: false })}
+              >
+                {copy.browser.confirmDeny}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* 视口预设 + 动作时间线 */}
+      <div className="flex shrink-0 items-center gap-[8px] border-t border-border px-[10px] py-[6px]">
+        <span className="text-[11px] text-muted-foreground">{copy.browser.viewportLabel}</span>
+        {BROWSER_VIEWPORT_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            className="rounded-md border border-border px-[8px] py-[3px] text-[11px] text-muted-foreground hover:bg-accent/50"
+            onClick={() => {
+              if (activeTab !== undefined) {
+                invoke('browser/viewportSet', { targetId: activeTab.targetId, width: preset.width, height: preset.height, preset: preset.id });
+              }
+            }}
+          >
+            {preset.id === 'desktop' ? copy.browser.viewportDesktop : preset.id === 'tablet' ? copy.browser.viewportTablet : copy.browser.viewportMobile}
+          </button>
+        ))}
+      </div>
+      <div className="h-[140px] shrink-0">
+        <BrowserActionTimeline actions={state.actions} />
       </div>
     </div>
   );

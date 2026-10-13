@@ -143,6 +143,10 @@ export const BrowserApiSchemas = {
     params: targetIdOnly,
     result: z.object({}).strict(),
   },
+  'browser/confirm': {
+    params: z.object({ sid: z.string().min(1), cid: z.string().min(1), approve: z.boolean() }).strict(),
+    result: z.object({ ok: z.boolean() }).strict(),
+  },
   'browser/pickElement': {
     params: z.object({ targetId: z.string().min(1), x: z.number().finite().nonnegative().max(7680), y: z.number().finite().nonnegative().max(4320) }).strict(),
     result: z.object({

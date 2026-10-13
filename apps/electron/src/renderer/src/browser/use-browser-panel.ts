@@ -13,13 +13,30 @@ export type BrowserPanelState = {
   cdpEndpoint: string | null;
   tabs: ReadonlyArray<{ targetId: string; url: string; title: string; active: boolean }>;
   frame: { targetId: string; streamEpoch: number; jpegB64: string; meta: BrowserFrameMeta } | null;
+  actions: ReadonlyArray<BrowserActionEntry>;
 };
+
+/** 动作时间线条目（钧子回传统一人/Agent 两侧；环形缓冲 200 条）。 */
+export type BrowserActionEntry = {
+  id: number;
+  at: number;
+  targetId: string;
+  kind: 'click' | 'input' | 'change' | 'keydown' | 'scroll';
+  x?: number;
+  y?: number;
+  elementLabel?: string;
+};
+
+const ACTION_RING_LIMIT = 200;
+
+let actionSeq = 0;
 
 export const BROWSER_PANEL_EMPTY: BrowserPanelState = {
   phase: 'starting',
   cdpEndpoint: null,
   tabs: [],
   frame: null,
+  actions: [],
 };
 
 export function reduceBrowserEvent(state: BrowserPanelState, event: BrowserEvent): BrowserPanelState {
@@ -41,6 +58,21 @@ export function reduceBrowserEvent(state: BrowserPanelState, event: BrowserEvent
     }
     case 'tabsChanged':
       return { ...state, tabs: event.tabs };
+    case 'action': {
+      const entry: BrowserActionEntry = {
+        id: ++actionSeq,
+        at: Date.now(),
+        targetId: event.targetId,
+        kind: event.kind,
+        ...(event.x !== undefined ? { x: event.x } : {}),
+        ...(event.y !== undefined ? { y: event.y } : {}),
+        ...(event.elementLabel !== undefined ? { elementLabel: event.elementLabel } : {}),
+      };
+      const actions = [...state.actions, entry];
+      return { ...state, actions: actions.length > ACTION_RING_LIMIT ? actions.slice(actions.length - ACTION_RING_LIMIT) : actions };
+    }
+    case 'viewportChanged':
+      return state;
     default:
       return state;
   }

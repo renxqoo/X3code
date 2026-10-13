@@ -12,6 +12,16 @@ import { createApiRoutes } from './api-routes';
 import { createBrowserHost } from './browser-host/browser-host';
 
 /** Chrome 二进制发现（D7：环境变量 > 标准位置探测；null = 引导态）。 */
+/** bw CLI 发现（PATH 解析；找不到 = 确认门通知链降级，不影响面板主功能）。 */
+function findBwCli(): string | null {
+  const pathEnv = process.env['PATH'] ?? '';
+  for (const dir of pathEnv.split(':')) {
+    const candidate = join(dir, 'bw');
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 function detectChromePath(): string | null {
   const fromEnv = process.env['BUN_CHROME_PATH'];
   if (fromEnv !== undefined && fromEnv.length > 0) return fromEnv;
@@ -385,6 +395,7 @@ void app.whenReady().then(async () => {
   browserHostRef.current = createBrowserHost({
     userDataDir: app.getPath('userData'),
     chromePath: detectChromePath(),
+    bwPath: findBwCli(),
     onEvent: (event) => {
       const target = mainWindow;
       if (target === null || target.isDestroyed()) return;

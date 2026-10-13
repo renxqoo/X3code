@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 
 import type { BrowserEvent, BrowserHostPhase } from '@x3code/contracts';
 
+import { createBwBridge, defaultBwHome } from './bw-bridge';
 import { createCdpClient } from './cdp-client';
 import { createChromeSupervisor, type SupervisorState } from './chrome-supervisor';
 
@@ -23,6 +24,8 @@ export type BrowserHostDeps = {
   /** 心跳参数（测试注入；缺省 2s × 3）。 */
   heartbeatMs?: number;
   heartbeatFailLimit?: number;
+  /** bw 可执行路径（确认门桥接；null/缺席 = 不桥接，通知链降级）。 */
+  bwPath?: string | null;
 };
 
 /** 当前 CDP 端点（env 注入与 attach 复制条共用；Chrome 未启动时为已定格端口）。 */
@@ -37,6 +40,28 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   let port = 0;
   let started = false;
   let starting: Promise<void> | null = null;
+  let confirmPollTimer: ReturnType<typeof setInterval> | null = null;
+  const notifiedCids = new Set<string>();
+  const bwBridge = deps.bwPath !== undefined && deps.bwPath !== null
+    ? createBwBridge({ bwPath: deps.bwPath, bwHome: defaultBwHome(deps.userDataDir) })
+    : null;
+
+  /** 确认门通知链：pending 文件枚举 → confirmNotice 事件（每 cid 恰一次；
+   *  bw 侧 120s 超时自清，面板同样 120s 后不再显示）。 */
+  function startConfirmPolling(): void {
+    if (bwBridge === null || confirmPollTimer !== null) return;
+    confirmPollTimer = setInterval(() => {
+      for (const pending of bwBridge.listPendingConfirms()) {
+        if (notifiedCids.has(pending.cid)) continue;
+        notifiedCids.add(pending.cid);
+        deps.onEvent({ type: 'confirmNotice', sid: pending.sid, cid: pending.cid, reason: pending.reason });
+      }
+      if (notifiedCids.size > 200) {
+        for (const key of [...notifiedCids].slice(0, notifiedCids.size - 200)) notifiedCids.delete(key);
+      }
+    }, 2000);
+    confirmPollTimer.unref();
+  }
 
   function pushHostState(next: BrowserHostPhase, detail?: string): void {
     phase = next;
@@ -95,6 +120,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
       pushHostState('starting');
       await supervisor.start();
       started = true;
+      startConfirmPolling();
     })();
     try {
       await starting;
@@ -135,6 +161,10 @@ export function createBrowserHost(deps: BrowserHostDeps) {
 
   /** 应用退出停机（will-quit 接线）。 */
   function stop(): void {
+    if (confirmPollTimer !== null) {
+      clearInterval(confirmPollTimer);
+      confirmPollTimer = null;
+    }
     client?.disconnect();
     client = null;
     supervisor?.stop();
@@ -142,5 +172,13 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     started = false;
   }
 
-  return { ensureStarted, currentClient, currentPhase, currentPort, stop };
+  /** 确认门代跑（browser/confirm 路由）。 */
+  async function confirmGate(sid: string, cid: string, approve: boolean): Promise<boolean> {
+    if (bwBridge === null) return false;
+    const ok = await bwBridge.confirm(sid, cid, approve);
+    if (ok) notifiedCids.delete(cid);
+    return ok;
+  }
+
+  return { ensureStarted, currentClient, currentPhase, currentPort, stop, confirmGate };
 }

@@ -26,6 +26,7 @@ const failClosedBrowserHost: ReturnType<typeof createBrowserHost> = {
   currentPhase: () => 'failed',
   currentPort: () => 0,
   stop: () => undefined,
+  confirmGate: () => Promise.resolve(false),
 };
 import { createOpenLocation, type OpenLocation } from './open-location';
 import { writeModelsConfig } from './models-config';
