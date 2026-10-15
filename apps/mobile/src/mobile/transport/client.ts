@@ -46,8 +46,15 @@ export function createBridgeClient(deps: BridgeClientDeps): BridgeClient {
       if (response.success) return { ok: true, data: mapResponseData(command, response.data) };
       // 失败原因取 CommandError.code；线上形状缺失或不成形时给显式缺因标记，
       // 展示层据此提示重试而非「未知错误」。
-      const reason = readCommandError(response.error)?.code ?? 'no_reason';
-      return { ok: false, error: { kind: 'transient', message: reason } };
+      // code 是文案映射的键（展示层据此查 REASON_COPY）；message 是服务端给的原始原因，
+      // 对 internal 这类兜底码承载唯一线索（如 host 顶层 catch 塞的 Error.message），
+      // 一并透出供诊断，不在此处丢弃。
+      const parsedError = readCommandError(response.error);
+      if (parsedError === null) return { ok: false, error: { kind: 'transient', message: 'no_reason' } };
+      return {
+        ok: false,
+        error: { kind: 'transient', message: parsedError.code, reason: parsedError.message },
+      };
     },
     subscribe(onEvent: (event: UiEvent) => void): Unsubscribe {
       subscribers.add(onEvent);
