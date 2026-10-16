@@ -8,10 +8,10 @@ jobs:
   gates:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # 旁级 x-harness 检出（私有协议共同部署拓扑）——集成门/码表对拍在 CI 真跑，
       # 不再是仅本机门；词表漂移由对拍断言在 CI 红（T40 §2.6 双侧封闭的接线补全）
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: renxqoo/x-harness
           path: x-harness
